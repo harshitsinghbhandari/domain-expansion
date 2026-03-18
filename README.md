@@ -11,16 +11,8 @@ This repository contains a collection of **skills** compatible with the `npx ski
 Add the entire repository (all skills):
 
 ```bash
-npx skills add <repo-url>
+npx skills add harshitsinghbhandari/domain-expansion
 ```
-
-Add a specific skill:
-
-```bash
-npx skills add <repo-url>@architecture-audit
-```
-
-Replace `<repo-url>` with the URL of this repository (e.g., `https://github.com/yourname/skills-repo`).
 
 ## Structure
 
