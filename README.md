@@ -5,6 +5,7 @@ This repository contains a collection of **skills** compatible with the `npx ski
 ## Available Skills
 
 - **architecture-audit** – Comprehensive architecture audit that combines ruthless analysis with solution‑focused improvement planning.
+- **itemized-functions** – Generate exhaustive integration functions with comprehensive test suites for all 3rd-party APIs and external services. Automatically creates function wrappers, individual test files, integrated test runners, and a detailed report of API behavior, response signatures, latency, and failure modes.
 
 ## Installation
 
@@ -19,6 +20,9 @@ npx skills add harshitsinghbhandari/domain-expansion
 ```
 skills/
   architecture-audit/
+    SKILL.md
+    plugin.json
+  itemized-functions/
     SKILL.md
     plugin.json
 

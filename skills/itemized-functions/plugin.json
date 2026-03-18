@@ -1,0 +1,5 @@
+{
+    "name": "itemized-functions",
+    "description": "Generate exhaustive integration functions with comprehensive test suites for all 3rd-party APIs and external services. Automatically creates function wrappers, individual test files, integrated test runners, and a detailed report of API behavior, response signatures, latency, and failure modes.",
+    "entry": "SKILL.md"
+}

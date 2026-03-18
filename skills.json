@@ -3,6 +3,10 @@
     {
       "name": "architecture-audit",
       "path": "skills/architecture-audit"
+    },
+    {
+      "name": "itemized-functions",
+      "path": "skills/itemized-functions"
     }
   ]
 }
