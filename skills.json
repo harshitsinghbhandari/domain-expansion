@@ -7,6 +7,10 @@
     {
       "name": "itemized-functions",
       "path": "skills/itemized-functions"
+    },
+    {
+      "name": "update-changelog",
+      "path": "skills/update-changelog"
     }
   ]
 }

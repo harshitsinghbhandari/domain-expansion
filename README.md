@@ -6,6 +6,7 @@ This repository contains a collection of **skills** compatible with the `npx ski
 
 - **architecture-audit** – Comprehensive architecture audit that combines ruthless analysis with solution‑focused improvement planning.
 - **itemized-functions** – Generate exhaustive integration functions with comprehensive test suites for all 3rd-party APIs and external services. Automatically creates function wrappers, individual test files, integrated test runners, and a detailed report of API behavior, response signatures, latency, and failure modes.
+- **update-changelog** – Add, organize, and manage changelog entries in CHANGELOG.md following the Keep a Changelog format. Automatically categorizes entries and maintains release structure.
 
 ## Installation
 
@@ -23,6 +24,9 @@ skills/
     SKILL.md
     plugin.json
   itemized-functions/
+    SKILL.md
+    plugin.json
+  update-changelog/
     SKILL.md
     plugin.json
 

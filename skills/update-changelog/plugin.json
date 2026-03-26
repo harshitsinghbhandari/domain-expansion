@@ -1,0 +1,5 @@
+{
+  "name": "update-changelog",
+  "description": "Expert skill for maintaining a Keep a Changelog formatted CHANGELOG.md file. Use this skill whenever you add features, fix bugs, or release a new version. You MUST use this skill to record any changes that have a user-facing impact. It handles categorization (Added, Changed, Fixed, etc.), semantic versioning, and reverse-chronological ordering with surgical precision.",
+  "entry": "SKILL.md"
+}
