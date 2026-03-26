@@ -11,6 +11,14 @@
     {
       "name": "update-changelog",
       "path": "skills/update-changelog"
+    },
+    {
+      "name": "code-quality-audit",
+      "path": "skills/code-quality-audit"
+    },
+    {
+      "name": "test-coverage-audit",
+      "path": "skills/test-coverage-audit"
     }
   ]
 }
