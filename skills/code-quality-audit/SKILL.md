@@ -23,7 +23,7 @@ Both outputs are produced in a single run, enabling teams to understand what's b
 
 **Required input:** User must provide or reference source code files (e.g., Python, JS, Go, etc.) or a directory. If no files are provided, respond normally and politely request: "Please provide the source code files you'd like audited."
 
-**File format:** All audited content is source code. Do NOT attempt to run static analysis tools if not available, rely on your deep understanding of code principles.
+**File format:** All audited content is source code. Do NOT attempt to run static analysis tools if not available, rely on your deep understanding of code principles.Keep both files in code-audit folder. 
 
 ## Phase 1: Audit Report (`audit.md`)
 
