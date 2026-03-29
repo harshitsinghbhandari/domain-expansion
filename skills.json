@@ -19,6 +19,10 @@
     {
       "name": "test-coverage-audit",
       "path": "skills/test-coverage-audit"
+    },
+    {
+      "name": "code-refactor-executor",
+      "path": "skills/code-refactor-executor"
     }
   ]
 }

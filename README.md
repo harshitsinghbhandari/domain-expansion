@@ -5,8 +5,11 @@ This repository contains a collection of **skills** compatible with the `npx ski
 ## Available Skills
 
 - **architecture-audit** – Comprehensive architecture audit that combines ruthless analysis with solution‑focused improvement planning.
-- **itemized-functions** – Generate exhaustive integration functions with comprehensive test suites for all 3rd-party APIs and external services. Automatically creates function wrappers, individual test files, integrated test runners, and a detailed report of API behavior, response signatures, latency, and failure modes.
-- **update-changelog** – Add, organize, and manage changelog entries in CHANGELOG.md following the Keep a Changelog format. Automatically categorizes entries and maintains release structure.
+- **code-quality-audit** – Strategic code quality review that combines Sukunand-style analysis with Gojond-style refactoring roadmaps.
+- **code-refactor-executor** – Executes a multi-stage refactoring plan based on existing audit and improvements documentation.
+- **test-coverage-audit** – Audit of test coverage and generation of missing test cases for your codebase.
+- **itemized-functions** – Generate exhaustive integration functions with comprehensive test suites for all 3rd-party APIs and external services.
+- **update-changelog** – Add, organize, and manage changelog entries in CHANGELOG.md following the Keep a Changelog format.
 
 ## Installation
 
@@ -16,11 +19,26 @@ Add the entire repository (all skills):
 npx skills add harshitsinghbhandari/domain-expansion
 ```
 
+Alternatively, add a specific skill (e.g., `code-quality-audit`):
+
+```bash
+npx skills add harshitsinghbhandari/domain-expansion --skill code-quality-audit
+```
+
 ## Structure
 
 ```
 skills/
   architecture-audit/
+    SKILL.md
+    plugin.json
+  code-quality-audit/
+    SKILL.md
+    plugin.json
+  code-refactor-executor/
+    SKILL.md
+    plugin.json
+  test-coverage-audit/
     SKILL.md
     plugin.json
   itemized-functions/
