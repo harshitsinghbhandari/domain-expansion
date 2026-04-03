@@ -23,6 +23,10 @@
     {
       "name": "code-refactor-executor",
       "path": "skills/code-refactor-executor"
+    },
+    {
+      "name": "llm-council",
+      "path": "skills/llm-council"
     }
   ]
 }

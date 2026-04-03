@@ -1,0 +1,5 @@
+{
+  "name": "llm-council",
+  "description": "Convene an LLM Council of 5 advisors with different thinking styles for high-stakes decisions. Includes peer review and chairman synthesis.",
+  "entry": "SKILL.md"
+}

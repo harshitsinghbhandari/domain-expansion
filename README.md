@@ -10,6 +10,7 @@ This repository contains a collection of **skills** compatible with the `npx ski
 - **test-coverage-audit** – Audit of test coverage and generation of missing test cases for your codebase.
 - **itemized-functions** – Generate exhaustive integration functions with comprehensive test suites for all 3rd-party APIs and external services.
 - **update-changelog** – Add, organize, and manage changelog entries in CHANGELOG.md following the Keep a Changelog format.
+- **llm-council** – Convene an LLM Council of 5 advisors with different thinking styles for high-stakes decisions, with peer review and chairman synthesis.
 
 ## Installation
 
@@ -45,6 +46,9 @@ skills/
     SKILL.md
     plugin.json
   update-changelog/
+    SKILL.md
+    plugin.json
+  llm-council/
     SKILL.md
     plugin.json
 
