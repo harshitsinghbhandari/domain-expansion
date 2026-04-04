@@ -5,12 +5,13 @@ This repository contains a collection of **skills** compatible with the `npx ski
 ## Available Skills
 
 - **architecture-audit** – Comprehensive architecture audit that combines ruthless analysis with solution‑focused improvement planning.
-- **code-quality-audit** – Strategic code quality review that combines Sukunand-style analysis with Gojond-style refactoring roadmaps.
+- **code-quality-audit** – Strategic code quality review that combines Sukuna-style analysis with Gojo-style refactoring roadmaps.
 - **code-refactor-executor** – Executes a multi-stage refactoring plan based on existing audit and improvements documentation.
 - **test-coverage-audit** – Audit of test coverage and generation of missing test cases for your codebase.
 - **itemized-functions** – Generate exhaustive integration functions with comprehensive test suites for all 3rd-party APIs and external services.
 - **update-changelog** – Add, organize, and manage changelog entries in CHANGELOG.md following the Keep a Changelog format.
 - **llm-council** – Convene an LLM Council of 5 advisors with different thinking styles for high-stakes decisions, with peer review and chairman synthesis.
+- **pr-review** – Comprehensive PR review focusing on code quality, test coverage, security, backward compatibility, and what CI cannot check.
 
 ## Installation
 
@@ -51,6 +52,11 @@ skills/
   llm-council/
     SKILL.md
     plugin.json
+  pr-review/
+    SKILL.md
+    plugin.json
+    bc-guidelines.md
+    review-checklist.md
 
 README.md
 skills.json

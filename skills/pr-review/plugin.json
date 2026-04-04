@@ -1,0 +1,5 @@
+{
+  "name": "pr-review",
+  "description": "Comprehensive PR review focusing on code quality, test coverage, security, backward compatibility, and what CI cannot check.",
+  "entry": "SKILL.md"
+}

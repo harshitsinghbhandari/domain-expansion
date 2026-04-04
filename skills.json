@@ -27,6 +27,10 @@
     {
       "name": "llm-council",
       "path": "skills/llm-council"
+    },
+    {
+      "name": "pr-review",
+      "path": "skills/pr-review"
     }
   ]
 }
