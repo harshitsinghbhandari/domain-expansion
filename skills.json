@@ -31,6 +31,10 @@
     {
       "name": "pr-review",
       "path": "skills/pr-review"
+    },
+    {
+      "name": "pr-learning",
+      "path": "skills/pr-learning"
     }
   ]
 }
