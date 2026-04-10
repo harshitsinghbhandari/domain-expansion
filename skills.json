@@ -35,6 +35,10 @@
     {
       "name": "pr-learning",
       "path": "skills/pr-learning"
+    },
+    {
+      "name": "edge-case-hunter",
+      "path": "skills/edge-case-hunter"
     }
   ]
 }

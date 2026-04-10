@@ -12,6 +12,8 @@ This repository contains a collection of **skills** compatible with the `npx ski
 - **update-changelog** – Add, organize, and manage changelog entries in CHANGELOG.md following the Keep a Changelog format.
 - **llm-council** – Convene an LLM Council of 5 advisors with different thinking styles for high-stakes decisions, with peer review and chairman synthesis.
 - **pr-review** – Comprehensive PR review focusing on code quality, test coverage, security, backward compatibility, and what CI cannot check.
+- **pr-learning** – Extract actionable learnings from merged PRs by comparing initial submission vs final merged state.
+- **edge-case-hunter** – Exhaustive edge-case review that hunts boundary conditions, missing guards, and unhandled failure modes with risk-scored results.
 
 ## Installation
 
@@ -57,6 +59,12 @@ skills/
     plugin.json
     bc-guidelines.md
     review-checklist.md
+  pr-learning/
+    SKILL.md
+    plugin.json
+  edge-case-hunter/
+    SKILL.md
+    plugin.json
 
 README.md
 skills.json

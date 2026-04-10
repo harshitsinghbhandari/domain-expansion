@@ -1,0 +1,5 @@
+{
+  "name": "edge-case-hunter",
+  "description": "Exhaustive edge-case review that traces branching paths and boundary conditions in a diff or code sample and reports only unhandled cases. Use when the user asks to hunt edge cases, boundary conditions, missing guards, or wants an edge-case-focused review.",
+  "entry": "SKILL.md"
+}
