@@ -1,0 +1,5 @@
+{
+  "name": "resume-rewrite",
+  "description": "Rewrite a resume for a target job using only existing material, but only after a matching resume-critic review has been completed.",
+  "entry": "SKILL.md"
+}

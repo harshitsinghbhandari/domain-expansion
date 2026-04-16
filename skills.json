@@ -33,6 +33,14 @@
       "path": "skills/resume-critic"
     },
     {
+      "name": "resume-rewrite",
+      "path": "skills/resume-rewrite"
+    },
+    {
+      "name": "resume-upgrade",
+      "path": "skills/resume-upgrade"
+    },
+    {
       "name": "pr-review",
       "path": "skills/pr-review"
     },

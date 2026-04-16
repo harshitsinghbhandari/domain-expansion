@@ -1,6 +1,6 @@
 ---
 name: resume-critic
-description: Constructively critique resumes from multiple professional perspectives. Use when the user asks for resume review, ATS feedback, interview readiness, bullet improvement, or tailored resume critique against a job description. Do NOT use for full resume rewriting unless the user explicitly asks for rewrites.
+description: Constructively critique resumes from multiple professional perspectives, but only against a specific job description or at least a concrete job title. Use when the user asks for resume review, ATS feedback, interview readiness, bullet improvement, or tailored resume critique for a target job. Do NOT use for full resume rewriting unless the user explicitly asks for rewrites.
 ---
 
 # Resume Critic
@@ -9,10 +9,11 @@ A resume review framework that runs the resume through 5 independent critics wit
 
 ## When to Use
 
-Use this skill when the user wants judgment, critique, prioritization, or interview-readiness feedback on a resume.
+Use this skill when the user wants judgment, critique, prioritization, or interview-readiness feedback on a resume for a specific target job.
 
 **Good uses:**
 - "Review my resume for product manager roles."
+- "Critique this resume for this Staff Backend Engineer job description."
 - "Is this resume ATS-friendly?"
 - "Critique this resume against this job description."
 - "What are the weakest bullets on this resume?"
@@ -22,8 +23,14 @@ Use this skill when the user wants judgment, critique, prioritization, or interv
 - "Write my resume from scratch." (creation task)
 - "Fix grammar only." (single-pass editing task)
 - "Summarize my work history." (processing task)
+- "Review my resume with no target job at all." (insufficient targeting)
 
 If the user asks for critique and rewrites together, do the critique first. Keep the criticism distinct from any later rewrite work.
+This skill requires either:
+- a full job description, or
+- a concrete job title plus enough context to infer the target lane
+
+If neither exists, ask for one before proceeding.
 
 ## The Five Critics
 
@@ -55,20 +62,25 @@ Assumes the resume is overselling, underspecified, or hiding weaknesses. Flags v
 
 Before critiquing, scan the workspace for relevant context:
 - The resume file the user referenced
-- The target job description, if provided
+- The target job description, or at minimum the concrete job title
 - Supporting docs such as LinkedIn/about notes, portfolio summaries, or prior resume versions
 - Previous critique transcripts if they exist
 
 Use quick reads only. Do not spend more than 30 seconds gathering context.
 
 Frame the review with:
-1. The target role or role family
+1. The exact job description being audited against, or the exact job title if no full JD exists
 2. Candidate level and domain, if inferable
 3. Whether the resume is generic or tailored
 4. What the user wants most: ATS feedback, brutal critique, targeting, bullet quality, interview readiness, or another angle
 5. What is at stake: job search quality, application conversion, or readiness for a specific role
 
-If the target role is missing and cannot be inferred, ask ONE clarifying question. Otherwise proceed and state the assumption.
+If the target job description or job title is missing, ask ONE clarifying question and do not proceed until it is provided.
+The framed brief must always begin with:
+- `This resume was audited for: [full job title]`
+- `Job description source: [pasted JD | linked JD | inferred from user-provided title only]`
+
+If only a job title is available, explicitly state that the audit is weaker because it is title-based rather than JD-based.
 
 ### Step 2: Convene the Critics (5 Sub-agents in Parallel)
 
@@ -87,7 +99,7 @@ A user has submitted this resume for critique:
 [resume text]
 ---
 
-[Optional target job description]
+[Required target job description or job title]
 
 Respond only from your perspective. Be direct, specific, and evidence-based. Do not try to be balanced. The other critics will cover the other angles.
 
@@ -205,12 +217,14 @@ Be direct. Do not hedge. The point is to help the user improve the resume fast.
 Create `resume-critic-report-[timestamp].html` with inline CSS. Structure:
 
 1. The resume context and target role at the top
-2. The interview-readiness verdict prominently displayed
-3. A severity-ranked issues panel
-4. A simple visual showing where critics aligned or diverged
-5. Collapsible sections for each critic's full response
-6. A collapsible section for peer review highlights
-7. A footer with timestamp
+2. A clearly labeled banner that says `This resume was audited for: [job title]`
+3. A clearly labeled section that says `Job description audited against:` followed by the JD text or a note that only a job title was provided
+4. The interview-readiness verdict prominently displayed
+5. A severity-ranked issues panel
+6. A simple visual showing where critics aligned or diverged
+7. Collapsible sections for each critic's full response
+8. A collapsible section for peer review highlights
+9. A footer with timestamp
 
 Style: clean white background, subtle borders, high legibility, professional review document look.
 
@@ -240,8 +254,10 @@ resume-critic-transcript-[timestamp].md    # full transcript for reference
 - Always anonymize responses for peer review.
 - Do not let the critics drift into rewriting the full resume unless the user explicitly asks for rewrite help afterward.
 - Every critique must be tied to concrete evidence from the resume, not generic resume advice.
+- Always require a target job description or at least a concrete job title before starting.
+- Always state explicitly which job description or title the resume was audited for.
 - Prioritize interview conversion over style preferences.
-- If the target job description exists, judge the resume against it explicitly.
+- Judge the resume against the provided job target explicitly.
 - The final verdict must be decisive, not vague.
 
 ## Example Session

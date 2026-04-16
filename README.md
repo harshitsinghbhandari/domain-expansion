@@ -11,7 +11,9 @@ This repository contains a collection of **skills** compatible with the `npx ski
 - **itemized-functions** – Generate exhaustive integration functions with comprehensive test suites for all 3rd-party APIs and external services.
 - **update-changelog** – Add, organize, and manage changelog entries in CHANGELOG.md following the Keep a Changelog format.
 - **llm-council** – Convene an LLM Council of 5 advisors with different thinking styles for high-stakes decisions, with peer review and chairman synthesis.
-- **resume-critic** – Critique resumes through 5 specialized reviewers with anonymous peer review and a final interview-readiness verdict.
+- **resume-critic** – Critique resumes through 5 specialized reviewers, but only against a specific job description or concrete job title, with anonymous peer review and a final interview-readiness verdict.
+- **resume-rewrite** – Rewrite a resume for a target job using only the candidate’s existing material, and only after a matching `resume-critic` review.
+- **resume-upgrade** – Propose strategic resume upgrades like projects, skills, and proof-building moves for a target job, and only after a matching `resume-critic` review.
 - **pr-review** – Comprehensive PR review focusing on code quality, test coverage, security, backward compatibility, and what CI cannot check.
 - **pr-learning** – Extract actionable learnings from merged PRs by comparing initial submission vs final merged state.
 - **edge-case-hunter** – Exhaustive edge-case review that hunts boundary conditions, missing guards, and unhandled failure modes with risk-scored results.
@@ -56,6 +58,12 @@ skills/
     SKILL.md
     plugin.json
   resume-critic/
+    SKILL.md
+    plugin.json
+  resume-rewrite/
+    SKILL.md
+    plugin.json
+  resume-upgrade/
     SKILL.md
     plugin.json
   pr-review/

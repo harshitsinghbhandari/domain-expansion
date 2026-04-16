@@ -1,0 +1,5 @@
+{
+  "name": "resume-upgrade",
+  "description": "Suggest strategic resume upgrades like projects, skills, and proof-building moves for a target job, but only after a matching resume-critic review has been completed.",
+  "entry": "SKILL.md"
+}
