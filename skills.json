@@ -29,6 +29,10 @@
       "path": "skills/llm-council"
     },
     {
+      "name": "resume-critic",
+      "path": "skills/resume-critic"
+    },
+    {
       "name": "pr-review",
       "path": "skills/pr-review"
     },
