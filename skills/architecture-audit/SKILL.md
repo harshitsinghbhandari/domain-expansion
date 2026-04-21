@@ -103,6 +103,8 @@ Generate `audit.md` with this exact structure:
 - **Handle incomplete information gracefully**: If files lack detail, explicitly note: "X cannot be fully assessed—insufficient specification in [file]."
 - **Balance rigor with usefulness**: Always explain the *impact* of an issue (e.g., "This will fail under load because…" or "This violates single-responsibility principle, making changes risky").
 - **Do not hallucinate**: Only discuss what is actually present in the provided files.
+- **Report everything you observe**: If a structural weakness is present, include it regardless of how common the pattern is or whether you suspect the team already knows. Do not rationalize away findings. If you noticed it, report it.
+- **Output goes under the user's name**: Your audit report reflects on the person who commissioned it. Score honestly — inflated scores or softened language help no one.
 
 ## Phase 2: Improvements Roadmap (`improvements.md`)
 

@@ -431,6 +431,8 @@ def call_ollama_chat(prompt: str, model: str = None, temperature: float = 0.7, t
 - **Full response bodies** — Show actual data (sanitized) so developer understands exact format
 - **Timestamps throughout** — When was this run, when was each test executed
 - **Actionable findings** — Not just "failed" but "why" and "how to fix"
+- **Report all failures and anomalies** — Do not omit unexpected behavior because it seems minor. Every quirk discovered now prevents a production incident later
+- **Output goes under the user's name** — The report becomes their reference document. Incomplete or softened findings waste the testing effort
 
 ## Special Cases
 

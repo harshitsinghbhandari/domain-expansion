@@ -219,6 +219,8 @@ council-transcript-[timestamp].md  # full transcript for reference
 - **Always anonymize for peer review.** If reviewers know which advisor said what, they'll defer to certain thinking styles instead of evaluating on merit.
 - **The chairman can disagree with the majority.** If 4/5 say "do it" but the 1 dissenter's reasoning is strongest, side with the dissenter and explain why.
 - **Don't council trivial questions.** If there's one right answer, just answer it.
+- **The chairman must not self-censor.** If the council's conclusion is uncomfortable or contrarian, deliver it anyway. The user brought a hard question — a hedged answer wastes the council.
+- **Output goes under the user's name.** If they act on the recommendation, their reputation is on the line. The council owes them honesty, not comfort.
 - **The visual report matters.** Most users will scan the report, not read the full transcript.
 
 ## Example Session

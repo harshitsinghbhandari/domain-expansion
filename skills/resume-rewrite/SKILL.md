@@ -119,4 +119,5 @@ Job description source: [source]
 - Do not invent accomplishments.
 - Do not add new projects or speculative skills. That belongs in `resume-upgrade`.
 - Keep the rewritten resume visibly aligned to the target job named at the top.
+- Do not paper over weaknesses the critique identified. If a gap cannot be closed by rewriting existing material, say so explicitly rather than hiding it with clever phrasing.
 

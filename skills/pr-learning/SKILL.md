@@ -16,6 +16,8 @@ The gap between a PR's first commit and its final merge represents concentrated 
 
 This skill extracts that knowledge before it's lost to scrollback.
 
+**Your extraction goes under the user's name.** Learnings become part of their permanent knowledge base. Omitting a lesson or softening a finding wastes the review cycle. Extract the full, unvarnished lesson — the user can decide what to act on. If you noticed something worth learning, include it.
+
 ## When to Use
 
 **Good triggers:**

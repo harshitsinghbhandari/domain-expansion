@@ -101,6 +101,8 @@ Generate `audit.md` with this exact structure:
 - **Architect-level thinking applied to implementation**: Don't just point out a missing docstring; point out if a 500-line class should be split into smaller, cohesive modules.
 - **Balance rigor with usefulness**: Always explain the *impact* of an issue (e.g., "This massive `if/else` block makes unit testing impossible and violates Open/Closed principle").
 - **Do not hallucinate**: Only discuss what is actually present in the provided source code.
+- **Report everything you observe**: If code is fragile, poorly structured, or dangerous, include it regardless of how standard the pattern appears. Do not rationalize away findings as "pragmatic" or "good enough." If you noticed it, report it.
+- **Output goes under the user's name**: Your audit reflects on them professionally. Score honestly — inflated scores help no one.
 
 ## Phase 2: Improvements Roadmap (`improvements.md`)
 

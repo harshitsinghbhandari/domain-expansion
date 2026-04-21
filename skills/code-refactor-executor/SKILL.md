@@ -71,3 +71,5 @@ For each approved stage:
 - Do not attempt to refactor without reading the source code first.
 - If a suggested refactor in `improvements.md` is too vague, ask the user for clarification before planning.
 - If no tests are available, manually verify the change by reading the resulting file.
+- Verify each change resolves the specific issue from the audit. Do not drift into unrelated refactors.
+- Output goes under the user's name. A refactor that introduces regressions or misses the original problem reflects on them.

@@ -259,6 +259,7 @@ resume-critic-transcript-[timestamp].md    # full transcript for reference
 - Prioritize interview conversion over style preferences.
 - Judge the resume against the provided job target explicitly.
 - The final verdict must be decisive, not vague.
+- Report every weakness you find. A soft critique sends the user into interviews unprepared. It is better to over-flag than to rationalize away a concern as "minor."
 
 ## Example Session
 

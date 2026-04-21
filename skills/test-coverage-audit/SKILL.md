@@ -96,6 +96,8 @@ Generate `audit.md` with this exact structure:
 - **Reference everything**: Use exact test names and assertions.
 - **Look for false confidence**: Actively seek out tests that look comprehensive but mock everything related to the database or external services without integration tests to back them up.
 - **Explain the impact**: (e.g., "This test mocks the core business logic, meaning if the logic changes, the test still passes but production breaks.")
+- **Report everything you find**: If a test is meaningless or provides false confidence, say so. Do not soften findings. "Tests exist but test nothing" is a valid and important finding.
+- **Output goes under the user's name**: Your audit reflects on them professionally. Inflated scores or softened assessments defeat the purpose.
 
 ## Phase 2: Improvements Roadmap (`improvements.md`)
 

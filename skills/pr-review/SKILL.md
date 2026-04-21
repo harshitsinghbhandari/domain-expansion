@@ -42,8 +42,11 @@ gh pr view <PR_NUMBER> --json title,body,author,baseRefName,headRefName,files,ad
 # Get the diff
 gh pr diff <PR_NUMBER>
 
-# Get PR comments
+# Get PR comments and reviews
 gh pr view <PR_NUMBER> --json comments,reviews
+
+# Get line-level inline review comments (not included in comments,reviews)
+gh api repos/{owner}/{repo}/pulls/<PR_NUMBER>/comments
 ```
 
 ### Local Branch Mode
@@ -124,6 +127,9 @@ A single line of code can have deep cross-cutting implications: a missing null c
 6. **Match the immediate context** — Read how similar features are already implemented in the same file. Pattern mismatches within a file are always wrong.
 7. **Assume competence** — The author knows the codebase; explain only non-obvious context.
 8. **No repetition** — Each observation appears in exactly one section of the review output.
+9. **If you noticed it, report it** — If something looks fragile, hacky, or wrong, include it in the review. Do not rationalize it away as "pragmatic," "standard practice," or "not worth mentioning." The author can decide it's acceptable; your job is to surface it.
+10. **Default to skepticism** — CI passing is necessary but not sufficient. Approve only with full confidence. "Request Changes" is the safe default. Fragile pairings, version-pinned overrides, lockfile corruption, and unsupported dependency combinations all pass CI today and break tomorrow.
+11. **Output goes under the user's name** — Your review is posted as their review. Every approval, missed issue, and recommendation reflects on them personally. Review as if your professional reputation depends on it — because theirs does.
 
 ### Using Sub-Agents
 
@@ -143,11 +149,27 @@ Before reviewing, build understanding of what the PR touches and why:
 
 Go through **every changed line** in the diff and evaluate it against the review checklist in [review-checklist.md](review-checklist.md).
 
-### Step 3: Check Backward Compatibility
+### Step 3: Review Existing PR Discussion
+
+Before formulating your review, read what others have already said on the PR:
+
+1. **In CLI mode:** Fetch inline review comments via `gh api repos/{owner}/{repo}/pulls/<PR_NUMBER>/comments` and PR-level reviews via `gh pr view <PR_NUMBER> --json comments,reviews`
+2. **In GitHub Actions mode:** Read the `<comments>` section already in the prompt context
+3. **Acknowledge valid concerns** — If another reviewer (human or bot, including Copilot) raised a legitimate issue, incorporate or reference it. Do not silently ignore existing discussion.
+4. **Disagree explicitly** — If you believe an existing concern is wrong, say so with reasoning. Silence is not disagreement.
+5. **Don't duplicate** — Reference existing comments instead of repeating them.
+
+### Step 4: Check Backward Compatibility
 
 Evaluate BC implications per [bc-guidelines.md](bc-guidelines.md). For non-trivial BC questions, spawn a sub-agent to search for existing callers of the modified API.
 
-### Step 4: Formulate Review
+### Step 5: Edge Case Hunt on High-Risk Files
+
+If the PR touches high-risk code (state machines, parsers, dependency resolution, auth flows, financial calculations, concurrency, or configuration merging), invoke `/edge-case-hunter` on the changed files in those areas. Include the top findings in the Edge Cases section of your review.
+
+Skip this step only if the PR is purely additive (new files, new tests) with no modifications to existing complex logic.
+
+### Step 6: Formulate Review
 
 Structure your review with actionable feedback organized by category. Every finding should be traceable to a specific line in the diff.
 
@@ -184,6 +206,11 @@ Reference the specific patterns or utilities the PR should be using.]
 
 ### Backward Compatibility
 [BC concerns if any]
+
+### Edge Cases
+[High-risk edge cases found by targeted analysis of critical changed files.
+Only present when the PR touches state machines, parsers, dependency resolution,
+auth flows, financial calculations, or similarly complex logic.]
 
 ### Performance
 [Performance concerns if any]

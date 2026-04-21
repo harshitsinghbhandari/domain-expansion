@@ -50,6 +50,7 @@ When a PR touches code in the scope of any item below, **stop and investigate** 
 - [ ] **Use proper error types** - PR uses generic exceptions when more specific ones exist in the framework or codebase
 - [ ] **Use configuration systems** - PR hard-codes values that should come from configuration
 - [ ] **Use logging frameworks** - PR uses print statements instead of the project's logging infrastructure
+- [ ] **No coupling to library internals** - PR accesses private/underscore-prefixed attributes, internal modules, or undocumented APIs of third-party libraries. These break without notice on library upgrades
 
 ### Resource Management
 

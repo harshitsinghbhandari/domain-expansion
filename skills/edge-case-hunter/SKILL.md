@@ -13,6 +13,8 @@ An aggressive edge-case discovery skill that systematically hunts production bre
 
 The goal is not comprehensive test coverage. The goal is catching the bugs that will page you at 3am.
 
+**If you found it, report it.** Do not rationalize away a finding as "unlikely" or "the developer probably knows." Your report goes under the user's name — every missed edge case reflects on them personally.
+
 ## Activation Rules
 
 **Explicit triggers only.** This skill activates ONLY when the user explicitly mentions:
@@ -26,7 +28,7 @@ The goal is not comprehensive test coverage. The goal is catching the bugs that 
 
 **Required input:** User must provide source code files, a directory, or reference changed files in a branch/PR. If no target is provided, ask: "What code would you like me to hunt edge cases in? Provide a directory path, file(s), or branch name."
 
-**Languages supported:** Python and TypeScript (auto-detected from file extensions).
+**Languages supported:** Auto-detected from file extensions. Works with any language; depth is strongest for Python, TypeScript, Go, Java, and Rust.
 
 ## Constraints
 
