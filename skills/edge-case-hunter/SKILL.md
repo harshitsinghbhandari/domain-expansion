@@ -98,6 +98,43 @@ For each function, systematically generate edge candidates using:
 - **State corruption:** Concurrent access, cache invalidation, stale reads
 - **Type confusion:** null/undefined, wrong type, missing fields
 
+### Step 2b: Data Flow Edge Cases
+
+In addition to input-driven edge cases, trace data-flow edge cases. These tend to produce high-Impact, high-Probability edges because they involve persistence and external systems — the bugs that pass CI and break in production.
+
+**1. Schema round-trip breaks**
+
+Find every place data is serialized and deserialized (written to disk, database, config, API). For each:
+- Does the read schema accept everything the write schema produces?
+- Are there values the write path can produce that the read path silently drops or rejects?
+- If both compile-time types AND runtime validators exist (TypeScript + Zod, Python + Pydantic), are they in sync? Missing runtime enum values cause silent data loss on re-read.
+
+**2. Stale state after transformation**
+
+Find every place state is stored, cached, or derived. For each:
+- What happens if the underlying truth changes after the state was stored? Does the cached state update, or does it go stale and cause incorrect behavior?
+- After a transformative action (restore, migrate, archive, role change), is the stored state updated to match the new reality? Or does pre-action state linger and cause problems on next read?
+
+**3. Partial operation states**
+
+Find every multi-step mutation (multiple writes, moves, renames, network calls). For each:
+- What does the system look like if it crashes between step N and N+1?
+- Is re-run safe (idempotent), or does it produce duplicates/corruption?
+- Are temp files cleaned up, or do they accumulate indefinitely?
+
+**4. External tool desync**
+
+Find every interaction with external tools (git, tmux, Docker, k8s). For each:
+- What happens if the code's view of the world diverges from the tool's? (Moved files git doesn't know about, tmux sessions the code renamed but the tool didn't, Docker containers the code stopped but the state file still says running.)
+- After moving/renaming a resource the tool tracks, is the tool's internal state repaired?
+
+**5. Dual-path inconsistencies**
+
+Find cases where the same conceptual data has two code paths (two readers, two writers, two derivation functions). For each:
+- Do they produce the same result for the same input?
+- Do they agree on priority (stored vs derived, cache vs fresh)?
+- Counter/flag mismatches: does every code path that should increment a counter actually increment it?
+
 ### Step 3: Score and Rank
 
 For each edge candidate:

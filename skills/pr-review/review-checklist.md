@@ -233,3 +233,55 @@ When a PR touches code in the scope of any item below, **stop and investigate** 
 - [ ] **Error handling** - Results are handled explicitly, not unwrapped without justification
 - [ ] **Ownership clarity** - Ownership and borrowing are clear and idiomatic
 - [ ] **No unsafe without justification** - Unsafe blocks have clear justification and are minimal
+
+## Data Flow Integrity
+
+This section catches bugs invisible to static code analysis — where code looks correct in isolation but data is lost or corrupted as it flows through the system. These are the bugs that pass CI and break in production.
+
+### Round-Trip Correctness
+
+For every data value that is persisted (written to disk, database, config, API response):
+
+- [ ] **Type vs runtime validator alignment** — If the project uses both compile-time types (TypeScript `type`/`interface`, Python type hints) AND a runtime validator (Zod, Joi, Pydantic, JSON Schema), diff the two. Every value in the compile-time type MUST exist in the runtime validator schema. Missing values are silently stripped on parse. Search for `z.object`, `z.enum`, `z.union`, `BaseModel`, `Schema` and compare against the corresponding TypeScript types or Python type hints.
+
+- [ ] **Write → parse → re-write round-trip** — Trace a value through: code writes it → serializer stores it → parser reads it back → code uses it. Does the value survive? Check: are there fields that are written but not in the parse schema? Are there parse schemas that add defaults the writer doesn't set?
+
+- [ ] **Sanitization strips data needed later** — If a sanitizer/normalizer processes raw input before storage, verify it doesn't strip fields that downstream code relies on. "Preserved until X" comments are a red flag — verify the preservation actually works end-to-end.
+
+### Dual-Path Consistency
+
+- [ ] **Duplicate logic audit** — Search for cases where the same conceptual operation exists in multiple files (e.g., status derivation, path resolution, validation). For each pair, verify they produce identical behavior for identical inputs. If they differ, determine which is canonical and flag the other.
+
+- [ ] **Launch vs restore, create vs update symmetry** — If a resource has a "create/launch" path and an "update/restore" path, compare their configurations. Restore paths often forget flags, permissions, or setup that the create path includes. Classic pattern: create does X, Y, Z but restore only does X, Y.
+
+- [ ] **Migration forward vs rollback symmetry** — If migration adds/transforms data, verify rollback correctly reverses it. Check: does rollback account for data created AFTER migration (new sessions, new archives)? Does it count everything that would be destroyed?
+
+### Counter/Flag Writer-Reader Alignment
+
+- [ ] **Writer-reader mismatch** — For every `if (counter > 0)` or `if (flag)`, trace: who increments/sets this? Are there OTHER code paths that should also set it but don't? Writer-reader mismatches are invisible when you look at either side in isolation.
+
+### External Tool Contract Alignment
+
+When code manages state that an external tool also tracks:
+
+- [ ] **Moved resources need repair** — If code moves a directory that an external tool tracks (git worktree, Docker volume, tmux session dir), verify the tool's internal references are updated. For git worktrees: `git worktree repair`. For tmux: `tmux rename-session`. Don't just move the filesystem entry — update the tool's state too.
+
+- [ ] **Renamed identifiers need propagation** — If a session name, container name, or worktree path changes, trace everywhere that identifier is used: metadata files, config references, log files, monitoring systems. All must be updated.
+
+- [ ] **Tool-specific post-move validation** — After moving/renaming an external tool's resource, verify the tool still works with it. Run a lightweight validation command (e.g., `git status`, `tmux list-sessions`) rather than assuming the move succeeded from the filesystem perspective.
+
+### Crash Safety
+
+- [ ] **Partial operation recovery** — If a function performs N sequential filesystem/network operations, verify what happens if it crashes after step K. Steps 1..K are done, K+1..N are not. Is the state recoverable? Can the operation be safely re-run? Look for: marker files, idempotent operations, or cleanup of partial state.
+
+- [ ] **Idempotency of re-run** — If an operation is interrupted and re-run, does it produce the correct result? Check: do early steps have "skip if already done" guards? Do write operations overwrite (safe) or append (unsafe on re-run)?
+
+- [ ] **Temp file cleanup on failure** — If a write-then-rename pattern is used (atomic write), verify the temp file is cleaned up if the rename fails. Otherwise temp files accumulate indefinitely.
+
+### Stored State Invalidation
+
+- [ ] **Stored state vs current truth** — For any stored/cached state, ask: what happens if the underlying truth changes after the state was stored? Does the stored state become stale? Is there a mechanism to re-derive or invalidate it? Examples: PR state stored in metadata after PR is merged; cached permissions after role change; derived status after lifecycle state changes.
+
+- [ ] **Post-action state consistency** — After a destructive or transformative action (kill, archive, migrate, restore), verify the state stored in metadata matches the new reality. Check: are there fields from the pre-action state that would cause incorrect behavior if read post-action?
+
+- [ ] **Archive is not deletion** — When code counts or scans resources, does it treat "archived" the same as "doesn't exist"? Archived resources are invisible to scans but still exist and may contain data the user expects to keep. Verify destructive operations count archives.

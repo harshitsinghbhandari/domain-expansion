@@ -149,6 +149,36 @@ Before reviewing, build understanding of what the PR touches and why:
 
 Go through **every changed line** in the diff and evaluate it against the review checklist in [review-checklist.md](review-checklist.md).
 
+### Step 2b: Data Flow Audit
+
+Before evaluating individual lines, trace the data that crosses persistence boundaries. This catches bugs invisible to static code analysis — the kind where code looks correct in isolation but data is lost or corrupted as it flows through the system.
+
+**Identify data shapes** that cross a persistence boundary: written to disk, database, config file, API response, network protocol, or external tool state.
+
+**For each data shape, trace the full round-trip:**
+
+1. **Who creates it?** What schema validates it on write?
+2. **Who stores it?** What format (JSON, YAML, key=value, binary)?
+3. **Who reads it back?** What schema validates it on read?
+4. **Who transforms it?** Are there intermediate formats or sanitization steps?
+5. **Who writes it again?** Does the re-write preserve all fields?
+
+**Specific checks for each data shape:**
+
+- **Type vs runtime validator alignment** — If the project uses both compile-time types (TypeScript `type`/`interface`, Python type hints) AND a runtime validator (Zod, Joi, Pydantic, JSON Schema), diff them. Every value in the compile-time type MUST exist in the runtime validator schema. Missing values are silently stripped on parse. Search for `z.object`, `z.enum`, `z.union`, `BaseModel`, `Schema` and compare against corresponding TypeScript types or Python type hints.
+
+- **Dual-path consistency** — If the same conceptual data has two code paths (two readers, two writers, a reader and a writer), verify they agree on schema, field priority, and transformation rules. Example: path A does `storedValue ?? derivedValue` but path B does `derivedValue ?? storedValue` — one is wrong. Find all readers of a value and diff their derivation logic.
+
+- **Sanitizer strips data needed later** — If a sanitizer/normalizer processes raw input before storage, verify it doesn't strip fields that downstream code relies on. "Preserved until X" comments are a red flag — trace whether preservation actually works end-to-end through the write→parse→re-write cycle.
+
+- **Counter/flag writer-reader alignment** — For every `if (counter > 0)` or `if (flag)`, trace who increments/sets it. Are there OTHER code paths that should also increment it but don't? Writer-reader mismatches are invisible when you look at either side alone.
+
+**Check external tool contracts:** If the PR moves, renames, or manages resources tracked by external tools (git worktrees, tmux sessions, Docker containers, k8s resources), verify the tool's internal state is updated — not just the filesystem. Examples: `git worktree repair` after moving a worktree, `tmux rename-session` after renaming a session.
+
+**Check partial operation crash safety:** If a function performs N sequential filesystem/network operations, verify what happens if it crashes after step K. Is the state recoverable? Can the operation be safely re-run (idempotent)? Are temp files cleaned up on failure?
+
+Spawn sub-agents for each data shape to trace in parallel.
+
 ### Step 3: Review Existing PR Discussion
 
 Before formulating your review, read what others have already said on the PR:
@@ -206,6 +236,9 @@ Reference the specific patterns or utilities the PR should be using.]
 
 ### Backward Compatibility
 [BC concerns if any]
+
+### Data Integrity
+[Round-trip issues, schema mismatches (compile-time type vs runtime validator), dual-path inconsistencies, sanitizer stripping, counter/flag writer-reader mismatches, external tool contract breaks, crash safety gaps. Only present when the PR touches persistence, serialization, config loading, or external tool state.]
 
 ### Edge Cases
 [High-risk edge cases found by targeted analysis of critical changed files.
