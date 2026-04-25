@@ -179,6 +179,39 @@ Before evaluating individual lines, trace the data that crosses persistence boun
 
 Spawn sub-agents for each data shape to trace in parallel.
 
+### Step 2b-ii: Consumer Perspective Audit
+
+For each new or changed data field in an event payload, API response,
+webhook body, UI prop, or config value:
+
+1. **Who consumes this?** List every downstream consumer (webhooks, UIs,
+   external tools, other services).
+2. **What do they display/use it for?** A field named `title` will be
+   shown as a title — is that actually what this value is?
+3. **Can they distinguish it from similar fields?** If the same concept
+   has multiple representations (task summary vs PR title), can the
+   consumer tell which one it received?
+4. **What do they see before the field is populated?** If the value is
+   null/fallback early in the lifecycle, is that better or worse than
+   wrong data?
+5. **Can they migrate?** If the shape changes, is there a version signal
+   or deprecation path?
+
+The goal: read each changed output as if you are the dumbest possible
+consumer with no access to the source code.
+
+### Step 2c: Merge Conflict Residue Check
+
+If the PR includes a merge commit or conflict resolution:
+
+1. Diff the PR branch's version of each conflicted file against the base
+   branch: `git diff main -- <file>`.
+2. For each function, constant, or import present in the base branch but
+   absent in the PR branch, verify the removal was intentional.
+3. Pay special attention to guard functions, grace periods, timeout
+   constants, and safety checks — these are the first casualties of
+   `-X theirs` resolution.
+
 ### Step 3: Review Existing PR Discussion
 
 Before formulating your review, read what others have already said on the PR:
@@ -198,6 +231,18 @@ Evaluate BC implications per [bc-guidelines.md](bc-guidelines.md). For non-trivi
 If the PR touches high-risk code (state machines, parsers, dependency resolution, auth flows, financial calculations, concurrency, or configuration merging), invoke `/edge-case-hunter` on the changed files in those areas. Include the top findings in the Edge Cases section of your review.
 
 Skip this step only if the PR is purely additive (new files, new tests) with no modifications to existing complex logic.
+
+### Step 5b: Outside-In Pass
+
+After completing the inside-out review, flip perspective. For each
+changed output surface (event payload, API response, CLI output, UI
+state, persisted data):
+
+- Read only the output shape and values, not the implementation.
+- Ask: "If I received this with no source code access, would I
+  misinterpret any field? Would I be unable to do something I need to?
+  Would I be surprised by the shape?"
+- Any "yes" is a finding.
 
 ### Step 6: Formulate Review
 

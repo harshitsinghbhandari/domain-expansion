@@ -25,6 +25,13 @@ When a PR introduces new API patterns, carefully evaluate the broader implicatio
 - [ ] **BC implications going forward** - Will this pattern create future BC constraints?
 - [ ] **Testing implications** - Does this pattern require awkward test patterns? Internal-only flags often lead to tests that use "forbidden" parameters
 - [ ] **UX implications** - Is this pattern discoverable and understandable to users? Will it appear in autocomplete, type hints, or docs in confusing ways?
+- [ ] **Event/payload shape is namespaced** — When composing event data from multiple sources, each source should have its own key (e.g., `data: { context, ...reactionFields }`) rather than being spread flat. Flat spread risks silent key collisions now or when either source adds a field later.
+- [ ] **Schema version on enriched payloads** — If a payload adds new fields alongside deprecated ones, include a `schemaVersion` field so consumers can migrate.
+- [ ] **Deprecated fields have a removal plan** — Duplicated fields kept for backward compatibility must have a tracking issue or version target for removal. A comment saying "intentional" is not a plan.
+
+### Sort/Filter/Comparison
+
+- [ ] **Sort/compare correctness** — For every `.sort()`, `.filter()`, or comparison in changed code: what happens at 0 items? 1 item? 10+ items? Does string comparison handle numeric components correctly (lexicographic `-10` < `-2` bug)? Does the comparator return a consistent total order?
 
 ### Code Clarity
 
