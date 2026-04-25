@@ -117,10 +117,12 @@ only the diff and commit log need to be fetched via git.
 
 ## Review Philosophy
 
+Your job is not to read the diff and check boxes. Your job is to **investigate** — trace every change through the system, experience it as a user would, and find the bugs that only surface when you look beyond the lines that changed.
+
 A single line of code can have deep cross-cutting implications: a missing null check causes silent failures, a missing validation opens security holes, a manual implementation instead of using framework utilities creates maintenance burden. **Treat every line as potentially load-bearing.**
 
-1. **Investigate, don't guess** — When uncertain whether a checklist item applies, spawn a sub-agent to read the relevant code. A reviewer who guesses wrong provides negative value.
-2. **Review the design, not just the implementation** — A PR can have perfectly correct implementation of a bad design. Question side-channel communication, on/off private flags, and demand concrete interface documentation for new contracts between components.
+1. **Investigate, don't guess** — When uncertain whether something is a problem, spawn a sub-agent to read the relevant code. A reviewer who guesses wrong provides negative value.
+2. **Review the design, not just the implementation** — A PR can have perfectly correct implementation of a bad design. Question hidden flags, side-channel communication, and undocumented contracts between components.
 3. **Focus on what CI cannot check** — Don't comment on formatting, linting, type errors, or CI failures. Focus on design quality, interface correctness, thread safety, BC implications, test adequacy, and pattern adherence.
 4. **Everything is a must-fix** — There are no "nits." If it's worth mentioning, it's worth fixing. Every inconsistency degrades the codebase over time.
 5. **Be specific and actionable** — Reference file paths and line numbers. Name the function/class/file the author should use.
@@ -128,14 +130,16 @@ A single line of code can have deep cross-cutting implications: a missing null c
 7. **Assume competence** — The author knows the codebase; explain only non-obvious context.
 8. **No repetition** — Each observation appears in exactly one section of the review output.
 9. **If you noticed it, report it** — If something looks fragile, hacky, or wrong, include it in the review. Do not rationalize it away as "pragmatic," "standard practice," or "not worth mentioning." The author can decide it's acceptable; your job is to surface it.
-10. **Default to skepticism** — CI passing is necessary but not sufficient. Approve only with full confidence. "Request Changes" is the safe default. Fragile pairings, version-pinned overrides, lockfile corruption, and unsupported dependency combinations all pass CI today and break tomorrow.
+10. **Default to skepticism** — CI passing is necessary but not sufficient. Approve only with full confidence. "Request Changes" is the safe default.
 11. **Output goes under the user's name** — Your review is posted as their review. Every approval, missed issue, and recommendation reflects on them personally. Review as if your professional reputation depends on it — because theirs does.
 
 ### Using Sub-Agents
 
-The review checklist is large. You cannot hold the full context of every infrastructure system in your head. **Spawn sub-agents** to investigate whether checklist items apply: read surrounding code, infrastructure the PR should be using, or tests that should exist. Spawn them in parallel for independent areas. A typical medium PR should spawn 3-8 sub-agents.
+The review checklist is large. You cannot hold the full context of every system in your head. **Spawn sub-agents** to investigate: read surrounding code, trace call chains, check what infrastructure the PR should be using, verify tests that should exist. Spawn them in parallel for independent areas. A typical medium PR should spawn 3-8 sub-agents.
 
 ## Review Workflow
+
+The workflow is structured as **investigate first, then verify**. Steps 1-5 are active investigation — you trace flows, follow data, and experience the change. Steps 6-10 are verification — you check against checklists, BC guidelines, and existing discussion.
 
 ### Step 1: Understand Context
 
@@ -145,62 +149,74 @@ Before reviewing, build understanding of what the PR touches and why:
 3. Note the scope of changes (files affected, lines changed)
 4. Spawn sub-agents to read the unchanged code surrounding each significantly changed file to understand existing patterns and infrastructure
 
-### Step 2: Deep Review
+### Step 2: Trace Code Flows
 
-Go through **every changed line** in the diff and evaluate it against the review checklist in [review-checklist.md](review-checklist.md).
+For each significantly changed function, method, or class, **follow the execution path in both directions**. The diff shows what changed — this step reveals what the change affects.
 
-### Step 2b: Data Flow Audit
+**Trace callers (up the call chain):**
+1. Who calls this function? Search the codebase for all call sites.
+2. What do callers expect — what arguments do they pass, what return value do they use?
+3. If the function's behavior changed, will every caller still work correctly?
+4. Are there callers in tests that test the old behavior?
 
-Before evaluating individual lines, trace the data that crosses persistence boundaries. This catches bugs invisible to static code analysis — the kind where code looks correct in isolation but data is lost or corrupted as it flows through the system.
+**Trace callees (down the call chain):**
+1. What does this function call? Read those functions.
+2. What contracts does it depend on — what invariants must hold?
+3. If a called function's return type or error behavior changes, does this code handle it?
 
-**Identify data shapes** that cross a persistence boundary: written to disk, database, config file, API response, network protocol, or external tool state.
+**Map the blast radius:**
+1. If this change is subtly wrong, what symptoms would appear and where?
+2. Would the failure be loud (crash, exception) or silent (wrong data, wrong behavior)?
+3. How far from this line of code would the symptom manifest?
 
-**For each data shape, trace the full round-trip:**
+Spawn sub-agents in parallel to trace each significant change.
 
-1. **Who creates it?** What schema validates it on write?
-2. **Who stores it?** What format (JSON, YAML, key=value, binary)?
-3. **Who reads it back?** What schema validates it on read?
-4. **Who transforms it?** Are there intermediate formats or sanitization steps?
-5. **Who writes it again?** Does the re-write preserve all fields?
+### Step 3: Trace Data Flows
 
-**Specific checks for each data shape:**
+For every data shape that crosses a boundary — function to function, module to module, service to service, code to disk/database/API — follow it from creation to final consumption.
 
-- **Type vs runtime validator alignment** — If the project uses both compile-time types (TypeScript `type`/`interface`, Python type hints) AND a runtime validator (Zod, Joi, Pydantic, JSON Schema), diff them. Every value in the compile-time type MUST exist in the runtime validator schema. Missing values are silently stripped on parse. Search for `z.object`, `z.enum`, `z.union`, `BaseModel`, `Schema` and compare against corresponding TypeScript types or Python type hints.
+**For each data shape, trace the full journey:**
 
-- **Dual-path consistency** — If the same conceptual data has two code paths (two readers, two writers, a reader and a writer), verify they agree on schema, field priority, and transformation rules. Example: path A does `storedValue ?? derivedValue` but path B does `derivedValue ?? storedValue` — one is wrong. Find all readers of a value and diff their derivation logic.
+1. **Where is it created?** What validates it at the source?
+2. **Where is it stored or transmitted?** What format? What can be lost in translation?
+3. **Where is it read back?** What validates it on the way in? Does the reader's schema match the writer's?
+4. **Where is it transformed?** Are there intermediate formats, sanitizers, or normalizers that could strip or alter fields?
+5. **Where is it consumed?** Does the final consumer interpret every field correctly?
 
-- **Sanitizer strips data needed later** — If a sanitizer/normalizer processes raw input before storage, verify it doesn't strip fields that downstream code relies on. "Preserved until X" comments are a red flag — trace whether preservation actually works end-to-end through the write→parse→re-write cycle.
+**Specific patterns to investigate:**
 
-- **Counter/flag writer-reader alignment** — For every `if (counter > 0)` or `if (flag)`, trace who increments/sets it. Are there OTHER code paths that should also increment it but don't? Writer-reader mismatches are invisible when you look at either side alone.
+- **Type vs runtime validator mismatch** — If the project uses compile-time types AND a runtime validator (Zod, Joi, Pydantic, JSON Schema, etc.), diff the two. Fields in the type but missing from the validator are silently stripped on parse.
 
-**Check external tool contracts:** If the PR moves, renames, or manages resources tracked by external tools (git worktrees, tmux sessions, Docker containers, k8s resources), verify the tool's internal state is updated — not just the filesystem. Examples: `git worktree repair` after moving a worktree, `tmux rename-session` after renaming a session.
+- **Dual-path divergence** — If the same data has two code paths (two readers, two writers, a reader and a writer), verify they agree on schema, field priority, and transformation rules. Example: path A does `storedValue ?? derivedValue` but path B does `derivedValue ?? storedValue` — one is wrong.
 
-**Check partial operation crash safety:** If a function performs N sequential filesystem/network operations, verify what happens if it crashes after step K. Is the state recoverable? Can the operation be safely re-run (idempotent)? Are temp files cleaned up on failure?
+- **Sanitizer strips data needed later** — If a sanitizer/normalizer processes input before storage, verify it doesn't strip fields that downstream code relies on. Trace whether preservation actually works end-to-end through write → parse → re-write.
+
+- **Writer-reader mismatch** — For every conditional like `if (counter > 0)` or `if (flag)`, trace who sets the value. Are there code paths that should set it but don't?
+
+- **Crash mid-sequence** — If a function performs N sequential operations (file writes, API calls, DB updates), what happens if it crashes after step K? Is state recoverable? Can the operation be safely re-run?
 
 Spawn sub-agents for each data shape to trace in parallel.
 
-### Step 2b-ii: Consumer Perspective Audit
+### Step 4: Trace User and Consumer Experience
 
-For each new or changed data field in an event payload, API response,
-webhook body, UI prop, or config value:
+Step back from the implementation. For every changed output surface — API response, CLI output, UI state, event payload, webhook body, error message, log line — read it as the **receiver** would.
 
-1. **Who consumes this?** List every downstream consumer (webhooks, UIs,
-   external tools, other services).
-2. **What do they display/use it for?** A field named `title` will be
-   shown as a title — is that actually what this value is?
-3. **Can they distinguish it from similar fields?** If the same concept
-   has multiple representations (task summary vs PR title), can the
-   consumer tell which one it received?
-4. **What do they see before the field is populated?** If the value is
-   null/fallback early in the lifecycle, is that better or worse than
-   wrong data?
-5. **Can they migrate?** If the shape changes, is there a version signal
-   or deprecation path?
+**For each output surface:**
 
-The goal: read each changed output as if you are the dumbest possible
-consumer with no access to the source code.
+1. **Who receives this?** List every downstream consumer — other services, UIs, external tools, human operators reading logs.
+2. **What do they see?** Not what the code intends — what the receiver actually gets. A field named `title` will be displayed as a title. Is that actually what this value is?
+3. **Can they tell similar things apart?** If the same concept has multiple representations (e.g., a summary used as a fallback for a title), can the consumer distinguish which one it received?
+4. **What do they see in transitional states?** Before the value is fully populated — null, empty string, fallback value — is that better or worse than wrong data?
+5. **Can they migrate?** If the output shape changes, is there a version signal or deprecation path? Or will consumers silently break?
+6. **Would they be surprised?** If you received this output with zero knowledge of the implementation, would any field confuse you? Would you misinterpret anything? Would you be unable to do something you need to do?
 
-### Step 2c: Merge Conflict Residue Check
+Any "yes" to question 6 is a finding.
+
+### Step 5: Deep Review Against Checklist
+
+Go through **every changed line** in the diff and evaluate it against the review checklist in [review-checklist.md](review-checklist.md). This is a systematic sweep to catch anything the flow-tracing steps missed.
+
+### Step 6: Merge Conflict Residue Check
 
 If the PR includes a merge commit or conflict resolution:
 
@@ -212,7 +228,7 @@ If the PR includes a merge commit or conflict resolution:
    constants, and safety checks — these are the first casualties of
    `-X theirs` resolution.
 
-### Step 3: Review Existing PR Discussion
+### Step 7: Review Existing PR Discussion
 
 Before formulating your review, read what others have already said on the PR:
 
@@ -222,29 +238,17 @@ Before formulating your review, read what others have already said on the PR:
 4. **Disagree explicitly** — If you believe an existing concern is wrong, say so with reasoning. Silence is not disagreement.
 5. **Don't duplicate** — Reference existing comments instead of repeating them.
 
-### Step 4: Check Backward Compatibility
+### Step 8: Check Backward Compatibility
 
 Evaluate BC implications per [bc-guidelines.md](bc-guidelines.md). For non-trivial BC questions, spawn a sub-agent to search for existing callers of the modified API.
 
-### Step 5: Edge Case Hunt on High-Risk Files
+### Step 9: Edge Case Hunt on High-Risk Files
 
 If the PR touches high-risk code (state machines, parsers, dependency resolution, auth flows, financial calculations, concurrency, or configuration merging), invoke `/edge-case-hunter` on the changed files in those areas. Include the top findings in the Edge Cases section of your review.
 
 Skip this step only if the PR is purely additive (new files, new tests) with no modifications to existing complex logic.
 
-### Step 5b: Outside-In Pass
-
-After completing the inside-out review, flip perspective. For each
-changed output surface (event payload, API response, CLI output, UI
-state, persisted data):
-
-- Read only the output shape and values, not the implementation.
-- Ask: "If I received this with no source code access, would I
-  misinterpret any field? Would I be unable to do something I need to?
-  Would I be surprised by the shape?"
-- Any "yes" is a finding.
-
-### Step 6: Formulate Review
+### Step 10: Formulate Review
 
 Structure your review with actionable feedback organized by category. Every finding should be traceable to a specific line in the diff.
 
@@ -283,7 +287,16 @@ Reference the specific patterns or utilities the PR should be using.]
 [BC concerns if any]
 
 ### Data Integrity
-[Round-trip issues, schema mismatches (compile-time type vs runtime validator), dual-path inconsistencies, sanitizer stripping, counter/flag writer-reader mismatches, external tool contract breaks, crash safety gaps. Only present when the PR touches persistence, serialization, config loading, or external tool state.]
+[Round-trip issues, schema mismatches, dual-path inconsistencies,
+writer-reader mismatches, crash safety gaps. Only present when
+the PR touches persistence, serialization, or data that crosses
+module/service boundaries.]
+
+### Consumer Impact
+[Issues found by tracing the user/consumer experience — misleading
+field names, missing version signals, undistinguishable representations,
+broken transitional states. Only present when the PR changes output
+surfaces (APIs, events, CLI output, UI state).]
 
 ### Edge Cases
 [High-risk edge cases found by targeted analysis of critical changed files.

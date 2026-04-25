@@ -267,15 +267,15 @@ For every data value that is persisted (written to disk, database, config, API r
 
 - [ ] **Writer-reader mismatch** — For every `if (counter > 0)` or `if (flag)`, trace: who increments/sets this? Are there OTHER code paths that should also set it but don't? Writer-reader mismatches are invisible when you look at either side in isolation.
 
-### External Tool Contract Alignment
+### External State Alignment
 
-When code manages state that an external tool also tracks:
+When code manages state that an external tool or system also tracks:
 
-- [ ] **Moved resources need repair** — If code moves a directory that an external tool tracks (git worktree, Docker volume, tmux session dir), verify the tool's internal references are updated. For git worktrees: `git worktree repair`. For tmux: `tmux rename-session`. Don't just move the filesystem entry — update the tool's state too.
+- [ ] **Moved resources need repair** — If code moves or renames a resource that an external tool tracks internally (managed directories, named sessions, containers, registered services), verify the tool's internal references are updated — not just the filesystem or local state.
 
-- [ ] **Renamed identifiers need propagation** — If a session name, container name, or worktree path changes, trace everywhere that identifier is used: metadata files, config references, log files, monitoring systems. All must be updated.
+- [ ] **Renamed identifiers need propagation** — If an identifier used as a key across systems changes (session names, resource IDs, registered paths), trace every place that identifier appears: metadata files, config references, monitoring, other services. All must be updated.
 
-- [ ] **Tool-specific post-move validation** — After moving/renaming an external tool's resource, verify the tool still works with it. Run a lightweight validation command (e.g., `git status`, `tmux list-sessions`) rather than assuming the move succeeded from the filesystem perspective.
+- [ ] **Post-move validation** — After moving or renaming an externally-tracked resource, verify the external tool still works with it. Don't assume the operation succeeded from the local perspective alone.
 
 ### Crash Safety
 
@@ -287,8 +287,8 @@ When code manages state that an external tool also tracks:
 
 ### Stored State Invalidation
 
-- [ ] **Stored state vs current truth** — For any stored/cached state, ask: what happens if the underlying truth changes after the state was stored? Does the stored state become stale? Is there a mechanism to re-derive or invalidate it? Examples: PR state stored in metadata after PR is merged; cached permissions after role change; derived status after lifecycle state changes.
+- [ ] **Stored state vs current truth** — For any stored/cached state, ask: what happens if the underlying truth changes after the state was stored? Does the stored state become stale? Is there a mechanism to re-derive or invalidate it? Look for: cached statuses read after the entity changes state, permissions cached after role changes, derived values that aren't recomputed when inputs change.
 
-- [ ] **Post-action state consistency** — After a destructive or transformative action (kill, archive, migrate, restore), verify the state stored in metadata matches the new reality. Check: are there fields from the pre-action state that would cause incorrect behavior if read post-action?
+- [ ] **Post-action state consistency** — After a destructive or transformative action (delete, archive, migrate, restore, upgrade), verify stored metadata matches the new reality. Are there fields from the pre-action state that would cause incorrect behavior if read post-action?
 
-- [ ] **Archive is not deletion** — When code counts or scans resources, does it treat "archived" the same as "doesn't exist"? Archived resources are invisible to scans but still exist and may contain data the user expects to keep. Verify destructive operations count archives.
+- [ ] **Soft-delete vs hard-delete confusion** — When code counts, scans, or iterates over resources, does it correctly handle resources that are logically removed but physically present (archived, soft-deleted, disabled)? These are invisible to naive scans but still exist and may contain data the user expects to keep.
