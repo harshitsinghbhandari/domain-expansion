@@ -1,0 +1,5 @@
+{
+  "name": "llm-forge",
+  "description": "Run existing work through 5 specialist craftspeople who each produce an improved version, peer-review each other, then synthesize the best elements into one final improved artifact.",
+  "entry": "SKILL.md"
+}
