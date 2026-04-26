@@ -29,6 +29,10 @@
       "path": "skills/llm-council"
     },
     {
+      "name": "llm-forge",
+      "path": "skills/llm-forge"
+    },
+    {
       "name": "resume-critic",
       "path": "skills/resume-critic"
     },
