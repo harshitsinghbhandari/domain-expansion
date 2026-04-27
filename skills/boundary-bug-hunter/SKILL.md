@@ -48,6 +48,14 @@ This skill exists to forcibly read **across** the seam, not at it.
 - Changes confined to a single function with no callers (rare; verify before skipping).
 - Style-only refactors with byte-identical behavior.
 
+**Trigger-skip heuristic (auto-trigger only):** When `pr-review` or another caller invokes the skill on every multi-file diff, skip when ALL of these hold for the diff:
+- Zero new function calls (no `grep -c '(' <added-lines>` increase relative to removed).
+- Zero new imports / requires / uses.
+- Zero changes to file I/O calls, network calls, or serialization calls.
+- Zero changes to schema, type, validator, or migration files.
+
+Such diffs (typo fixes, comment changes, log-message edits) cannot introduce boundary bugs and should not consume agent budget. The skip is logged in the report header so users know the run was elided, not silently skipped.
+
 ## The forcing question
 
 Before the skill signs off on any changed function `f`, it must answer this question concretely:
@@ -86,11 +94,34 @@ Compute, in parallel sub-agents per significant change:
 
 **Deduplicate** by `(entry-point, exit-shape)` so output is bounded. If two flows share an entry point and end shape but diverge in the middle, treat them as one for the table and call out the branch in prose.
 
-If the diff is large enough that flows are uncountable (>50 deduplicated flows), ask the user to scope to a subset of files, or proceed with a top-N strategy ranked by: (a) number of distinct boundaries on the flow, (b) presence of persistence or external I/O on the flow, (c) test coverage gaps on the flow.
+#### Flow confidence
+
+Static call-graph inference is reliable in typed languages with declared exports and unreliable in codebases that lean on reflection, dependency injection, dynamic dispatch, or framework "magic". Each flow gets a confidence label:
+
+- `static-resolved` — every edge in the flow is a direct symbol-to-symbol link the skill verified by reading source.
+- `framework-inferred` — at least one edge is inferred from a framework convention (e.g., NestJS DI, Spring autowiring, Rails routing). Confidence is high *if* the framework convention is correctly identified — but the skill labels the inference so reviewers can spot-check.
+- `heuristic` — at least one edge is a best guess (e.g., string-keyed event bus, dynamic `getattr`, runtime-loaded plugins). Findings on heuristic flows are clearly marked in the report. Treat them as suggestions, not gates.
+
+Per-language inference limits live in [references/entry-point-detection.md](references/entry-point-detection.md) under "Known limitations". Surface those limits in the report when they apply, rather than silently producing partial flows.
+
+#### Optional runtime trace input
+
+Users on opaque codebases can supply a runtime call trace via `--observed-flows <file>` (newline-separated `entry → ... → exit` chains, or a JSON array of `{entryPoint, edges, exitShape}` objects). When provided, observed flows are merged with statically-inferred flows and labeled `runtime-observed` (highest confidence). The skill prefers runtime data over inference where they conflict.
+
+#### Scaling: deterministic top-N, never punt
+
+When the diff produces many flows, the skill **does not ask the user to scope**. Punting at scale defeats the purpose. Instead:
+
+1. Score every deduplicated flow by **risk**: `risk = boundary_count + 2*has_persistence + 2*has_external_io + 3*existing_coverage_gap + 2*touches_security_path`.
+2. Take the top **30** flows by risk (configurable via `--top <N>`).
+3. **Always** include a `Dropped flows` section in the report listing every dropped flow with its score and the single most-load-bearing reason it didn't make the cut. The user can re-run with `--scope <path>` (filter to a directory or package) or `--all` (process every flow, accepting the wall-clock cost) to see the long tail.
+4. Heuristic-confidence flows are *not* dropped silently — if a dropped flow is heuristic-only, mark it as such so users know whether to invest in raising its confidence.
+
+`--scope <path>` accepts repo-relative globs (`src/payments/**`, `services/billing`). `--all` overrides the cap entirely. Both are surfaced in the report header so the run is reproducible.
 
 ### Step 3: Identify boundaries within each flow
 
-A **boundary** is any seam where one piece of code hands off data, control, or state to another. Six recognized types — full guidance in [references/boundary-types.md](references/boundary-types.md):
+A **boundary** is any seam where one piece of code hands off data, control, or state to another. Eight recognized types — full guidance in [references/boundary-types.md](references/boundary-types.md):
 
 1. **Cross-module function call** — call across modules / files / packages.
 2. **File I/O** — write here, read there. Include atomic-write/temp-file patterns and lock files.
@@ -98,25 +129,41 @@ A **boundary** is any seam where one piece of code hands off data, control, or s
 4. **Network / IPC / signals** — HTTP, gRPC, RPC, queues, sockets, signals, OS pipes.
 5. **Shared mutable state** — globals, caches, singletons, registries, lock files, environment variables that another process reads.
 6. **Schema versioning** — encoder of version N writes; decoder of version M reads. Includes migration boundaries (forward and rollback).
+7. **Cross-language seam** — TypeScript frontend ↔ Python backend, Go service ↔ Rust extension, mobile client ↔ JSON API. Type system on each side does not enforce the contract; drift is silent.
+8. **Event-sourced / CQRS seam** — event versioning, projection drift, command-side vs query-side divergence, replay correctness. The producer (command handler / event writer) and consumer (projection / read model) are separated in time as well as in space.
 
 For every boundary on a flow, record:
 
 - **Producer** — `file:line` that writes the data / mutates the state / sends the signal.
 - **Consumer** — `file:line` that reads it.
 - **Contract** — the shape, keys, types, and invariants the producer claims and the consumer expects. Be specific: don't write "object", write the actual key set with their types.
-- **Coverage** — whether any existing test exercises producer **and** consumer **together with real implementations on both sides**, not in isolation, not with mocks erasing the seam.
+- **Coverage** — whether any existing test exercises the seam end-to-end via one of the accepted verification methods below.
 
-A boundary is **verified** only when an existing test runs the real producer and the real consumer back-to-back and asserts the round-trip. Anything else — separate unit tests, mocked downstream calls, manual QA, "it works in staging" — is **unverified**.
+#### Accepted verification methods
 
-### Step 4: Demand round-trip tests
+A boundary is **verified** when at least one of these holds. Round-trip is the gold standard, but is not the only acceptable form. Full guidance in [references/verification-methods.md](references/verification-methods.md).
 
-For every boundary lacking end-to-end coverage, generate:
+- **Round-trip test** — real producer feeds real consumer in one test. Asserts the contract survives. Highest confidence.
+- **Consumer-driven contract test** — consumer pins the expected shape in a fixture; one test asserts producer satisfies the fixture; another asserts consumer handles the fixture. Both halves share the contract artifact. Use when the producer or consumer cannot run in-process.
+- **Recorded-replay test** — producer's real output is captured once (committed as a fixture), replayed into the real consumer in tests. Drift is detected the next time the producer changes the recording. Use for seams against external systems.
+- **Seam property test** — generator produces inputs satisfying the producer's contract, asserts the consumer never crashes / never returns invalid shapes. Use when the contract is wide and the assertion is "no surprise", not "specific value".
 
-- A concrete failing test stub in the project's idiomatic test framework, with exact file path and test name.
-- A one-line statement of what the test must assert (e.g., "after producer writes, consumer's read returns non-null and contains field `userId` matching the produced value").
-- The exact code stub to copy into the file. Per-language stub templates live in [references/test-frameworks.md](references/test-frameworks.md).
+A boundary is **unverified** when none of the above exists. Separate unit tests, mocked downstream calls, manual QA, "it works in staging", and a documented contract with no executing test all count as unverified.
 
-The stub must use **real implementations on both producer and consumer sides**. Where infrastructure makes that impossible (real database, real network), use the project's existing integration-test fixtures, not new mocks.
+### Step 4: Demand a verification artifact
+
+For every unverified boundary, generate the most lightweight verification that fits the seam:
+
+- **In-process producer + in-process consumer:** generate a round-trip test stub.
+- **One side is external:** generate either a consumer-driven contract test stub (with the contract fixture file) or a recorded-replay scaffold (with the capture script).
+- **Wide contract, simple "must not crash" invariant:** generate a seam property test.
+
+For each generated artifact:
+- Concrete file path and test name in the project's idiomatic test framework.
+- A one-line statement of what the test asserts.
+- The exact code stub to copy in. Per-language stub templates in [references/test-frameworks.md](references/test-frameworks.md). Per-method stub patterns in [references/verification-methods.md](references/verification-methods.md).
+
+Generated stubs use real implementations everywhere they can. New mocks introduced solely to make the round-trip "easier" are forbidden — they reproduce the failure mode the skill exists to catch.
 
 ### Step 5: Refuse the deflections by name
 
@@ -148,6 +195,25 @@ On the next run, the skill loads `.boundary-deferrals.json` and:
 
 The user must commit `.boundary-deferrals.json` to the repo. Deferrals not in version control are not deferrals.
 
+### Step 7: Emergency override (last resort)
+
+A single ambiguous boundary blocking a production hotfix is the failure mode that kills aggressive gates — teams turn them off entirely. The override mechanism prevents that, while keeping the use of an override loud and auditable.
+
+**Invocation:** `BOUNDARY_OVERRIDE="<reason>"` env var, or `--override "<reason>"` flag. The reason is mandatory and must be substantive (rejected if under 30 characters or generic).
+
+**What happens when an override is set:**
+
+1. The skill still produces the full `boundary-report.md` with every unverified boundary listed.
+2. `boundary-status.json.status` is set to `pass` — but `overrides_used` becomes a non-empty array, and `was_override` is `true`.
+3. A loud entry is appended to `.boundary-overrides.log` (committed to the repo) with: ISO-8601 timestamp, commit SHA, author (from git config), the literal reason, and the unverified boundaries that were waved through.
+4. The agent's final message includes the literal sentence: `BOUNDARY OVERRIDE USED: <N> unverified boundaries waved through — see .boundary-overrides.log entry <id>.`
+
+**Rate limiting (`--max-overrides-per-month <N>`):** Soft cap. When the rolling 30-day count exceeds N, the gate refuses to honor further overrides on that branch and reports `OVERRIDE LIMIT EXCEEDED`. Goal: make a team's override usage *visible* over time, not block emergencies. The cap is repo-configured in `.boundary-bug-hunter.json` (default: 5/month for repos with no config).
+
+**Audit mode (`boundary-bug-hunter audit-overrides`):** Lists every override entry since the last audit timestamp, with the current verification status of each waved-through boundary. Used in weekly review to confirm overrides used during incidents have been followed up — turning each override into a tracked debt rather than a forgotten exception.
+
+The override exists so the gate stays on. Overrides used liberally make the gate worthless; the audit log makes liberal use visible.
+
 ## Run modes
 
 ### `report` mode (default)
@@ -167,6 +233,23 @@ Same outputs, plus:
 
 When the user invokes the skill from `pr-review` as a final gate, default to aggressive mode unless told otherwise.
 
+### `audit-overrides` mode
+
+Read-only. Lists every entry in `.boundary-overrides.log` since the last audit timestamp (or all entries if no audit has been recorded). For each override, fetch the current state of the waved-through boundaries and report whether each has since been verified, deferred, or remains unverified. Used in weekly review.
+
+### Flags
+
+| Flag | Default | Effect |
+|------|---------|--------|
+| `--diff <base>...<head>` | current branch vs `main` | Diff to analyze. |
+| `--mode report\|aggressive` | `report` | See above. |
+| `--top <N>` | `30` | Top-N flows by risk score when the diff produces more than `N`. |
+| `--all` | off | Analyze every flow regardless of count. Long runs. |
+| `--scope <glob>` | none | Restrict flow set to flows touching the given path glob. Repeatable. |
+| `--observed-flows <file>` | none | Merge in runtime-traced flows. Marks them `runtime-observed`. |
+| `--override "<reason>"` | none (or `BOUNDARY_OVERRIDE` env var) | Wave through unverified boundaries; logs to `.boundary-overrides.log`. |
+| `--max-overrides-per-month <N>` | `5` (or repo config) | Soft rate limit on overrides. |
+
 ## Output format
 
 ### `boundary-report.md`
@@ -176,23 +259,27 @@ When the user invokes the skill from `pr-review` as a final gate, default to agg
 
 **Diff:** <base>...<head> (<commit-count> commits, <file-count> files, +<add>/-<del>)
 **Project:** <language(s)> / <test framework(s)>
-**Mode:** report | aggressive
+**Mode:** report | aggressive | audit-overrides
+**Flags:** <e.g., `--top 30`, `--scope src/payments/**`, `--all`>
 **Run date:** YYYY-MM-DD
-**Status:** PASS | FAIL (<N> unverified boundaries, <M> deferrals applied, <K> stale deferrals)
+**Status:** PASS | FAIL | OVERRIDE (<N> unverified, <M> deferrals applied, <K> stale, <O> overrides used)
+**Trigger-skip:** <if auto-triggered and skipped, the reason; otherwise omit>
 
 ## Summary
 
 <1-2 sentence overall assessment.>
 
-Flows discovered: <N>. Boundaries on those flows: <M>. Verified end-to-end: <V>. Unverified: <U>. Deferred (with audit record): <D>.
+Flows discovered: <N>. Analyzed: <A> (top-N or all). Dropped: <D>. Boundaries on analyzed flows: <M>. Verified: <V> (round-trip <r>, contract <c>, replay <p>, property <q>). Unverified: <U>. Deferred: <Df>. Overrides used this run: <O>.
 
-## User Flow: <entry-point name> → <terminal shape>
+## User Flow: <entry-point name> → <terminal shape> [confidence: static-resolved | framework-inferred | heuristic | runtime-observed]
 
-<Optional one-line prose describing the flow.>
+<Optional one-line prose describing the flow. If confidence is heuristic, name the unresolved edge.>
 
-| # | Boundary | Producer | Consumer | Contract | Verified end-to-end? |
-|---|----------|----------|----------|----------|----------------------|
-| 1 | <type>   | f1:LL    | f2:LL    | <shape>  | NO                   |
+| # | Boundary | Producer | Consumer | Contract | Verification |
+|---|----------|----------|----------|----------|--------------|
+| 1 | <type>   | f1:LL    | f2:LL    | <shape>  | UNVERIFIED   |
+| 2 | <type>   | f1:LL    | f2:LL    | <shape>  | round-trip (`tests/integration/x_test.ts`) |
+| 3 | <type>   | f1:LL    | f2:LL    | <shape>  | replay (`fixtures/charge-response.json`) |
 
 ### Missing test (boundary 1)
 
@@ -218,6 +305,22 @@ Flows discovered: <N>. Boundaries on those flows: <M>. Verified end-to-end: <V>.
 |-------------------|-----------|
 | ...               | ...       |
 
+## Dropped flows (analysis cap reached)
+
+(Only present when the flow set exceeded `--top N`. Re-run with `--scope <path>` or `--all` to inspect dropped flows.)
+
+| # | Entry point | Exit shape | Risk score | Why dropped | Confidence |
+|---|-------------|------------|------------|-------------|------------|
+| 1 | ...         | ...        | 7          | below top-N | static-resolved |
+
+## Overrides used this run
+
+(Only present when `--override` or `BOUNDARY_OVERRIDE` was set.)
+
+| Boundary | Reason | Author | Override entry id |
+|----------|--------|--------|-------------------|
+| ...      | ...    | ...    | `2026-04-27T15:32:01Z-<sha>` |
+
 ## Deflections refused this run
 
 (Only present if the agent encountered one of the named deflections during this analysis.)
@@ -236,16 +339,36 @@ Flows discovered: <N>. Boundaries on those flows: <M>. Verified end-to-end: <V>.
 ```json
 {
   "status": "pass" | "fail",
+  "was_override": false,
   "unverified_count": 0,
   "deferred_count": 0,
   "stale_deferral_count": 0,
+  "flows_discovered": 0,
   "flows_analyzed": 0,
+  "flows_dropped": 0,
   "boundaries_total": 0,
+  "verified_breakdown": {
+    "round_trip": 0,
+    "contract": 0,
+    "replay": 0,
+    "property": 0
+  },
+  "overrides_used": [
+    { "id": "<entry-id>", "reason": "<short>", "boundary_count": 0 }
+  ],
+  "flow_confidence_counts": {
+    "static_resolved": 0,
+    "framework_inferred": 0,
+    "heuristic": 0,
+    "runtime_observed": 0
+  },
   "diff_base": "<sha>",
   "diff_head": "<sha>",
   "run_at": "<ISO-8601>"
 }
 ```
+
+CI gate one-liner: `jq -e '.status == "pass" and .was_override == false' boundary-status.json` to fail on either an unverified boundary or an override use, depending on policy. Most teams should fail on `status == "fail"` and surface `was_override == true` as a warning, not a failure.
 
 ## Cross-skill integration
 
@@ -266,7 +389,20 @@ These principles override convenience and apply to every run:
 5. **Stay project-agnostic.** No hardcoded repo names, language preferences, or framework assumptions. The skill must work on any codebase the manifest detection recognizes.
 6. **The report goes under the user's name.** Every approval, every "verified", every deferral acceptance reflects on them. Be specific. Be skeptical. Be willing to deliver an inconvenient FAIL.
 
-## Acceptance criteria (from the originating issue)
+## Calibration
+
+The skill makes verifiable claims (this seam is unverified, this test will fail). Calibration measures how often those claims are right.
+
+A real precision/recall benchmark lives in [`benchmarks/`](../../benchmarks/) (scaffolded; corpus collection tracked as a follow-up). On every change to this skill, run:
+
+- **Recall suite** — N real merged PRs from open-source projects where boundary bugs were caught by reviewers (linked from commit messages tagged `boundary` / `regression` / `round-trip` / `schema mismatch` / `version skew`). Run the skill on the pre-fix commit. Did it find the same bug? Misses are blocking regressions.
+- **Precision suite** — N clean PRs with no boundary issues. Did the skill stay quiet? Spurious findings are blocking regressions.
+
+Each release records precision and recall in `benchmarks/results-<version>.json`. Synthetic seeded tests verify happy-path behavior but do not substitute for the benchmark — synthetic seams are easy.
+
+A CI workflow (to be added) runs both suites on every PR that modifies files under `skills/boundary-bug-hunter/`.
+
+## Acceptance criteria
 
 The skill is correct when:
 
@@ -276,12 +412,17 @@ The skill is correct when:
 - The skill detects test framework and language for at least: TypeScript/JavaScript (Vitest / Jest / Mocha), Python (pytest / unittest), Go, Rust, Ruby (RSpec / minitest), Java/Kotlin (JUnit), .NET (xUnit / NUnit) — without manual configuration.
 - An aggressive-mode CI run on a PR with an unverified boundary surfaces the literal `BOUNDARY GATE FAILED` sentence and `boundary-status.json` reports `"status": "fail"`.
 - When the user provides a written out-of-scope reason for a boundary, the skill records it in `.boundary-deferrals.json` with the seam hash so the deferral is auditable in the next review cycle.
+- A diff producing more than `--top` flows produces a deterministic top-N analysis plus a `Dropped flows` section listing every dropped flow with score and reason — never a "scope this for me" punt.
+- A heuristic-confidence flow appears in the report labeled as such; static-resolved flows do not carry the label.
+- A boundary verified by a consumer-driven contract test, recorded-replay fixture, or seam property test is reported as verified — not flagged for a redundant round-trip stub.
+- An invocation with `BOUNDARY_OVERRIDE=<reason>` produces a passing `boundary-status.json` with `was_override == true`, appends an entry to `.boundary-overrides.log`, and emits the `BOUNDARY OVERRIDE USED` sentence.
+- `audit-overrides` mode lists every override since the last audit with the current verification status of each waved-through boundary.
+- The benchmark suite in `benchmarks/` runs on PRs that modify the skill, and precision/recall are recorded per release.
 
 ## Out of scope
 
 - Replacing unit tests. This is additive.
 - Mutation testing.
-- Property-based testing.
 - Full browser / network end-to-end. The seams the skill hunts are within-process and file-system seams reachable from the diff.
 - Style / lint / type concerns. Those have other tools.
 - Performance regressions. Use a profiler or benchmark harness.

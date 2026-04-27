@@ -1,6 +1,6 @@
 # Boundary Types — Field Guide
 
-The six recognized boundary types, with patterns to look for, the contract that must be checked, and the shape of a passing round-trip test.
+The eight recognized boundary types, with patterns to look for, the contract that must be checked, and the shape of a passing round-trip test.
 
 When in doubt about whether something is a boundary: if a piece of code passes data, control, or state to another piece of code that was tested separately, it's a boundary.
 
@@ -177,6 +177,75 @@ Sequence is the test. Write the state in one code path, read it in another, asse
 
 ---
 
+---
+
+## 7. Cross-language seam
+
+**Definition:** Code in one language hands data to code in another. The static type system on each side stops at the language boundary. Drift is silent because no compiler sees both sides.
+
+**Patterns:**
+- Web frontend (TypeScript) calling backend (Python / Go / Ruby / etc.) over HTTP, gRPC, or GraphQL.
+- Mobile client (Swift / Kotlin) calling REST API.
+- Native extension (Rust / C / C++) called from a high-level runtime (Node / Python / Ruby).
+- Polyglot monorepo with a shared protocol (Protobuf, OpenAPI, JSON Schema) supposedly enforced across services — but only enforced if both sides regenerate.
+- WebAssembly module called from JavaScript host.
+- Inter-process serialization (FFI, foreign function calls, language-bridged queues).
+
+**Contract to check:**
+- **Schema source of truth:** Is there one canonical schema (Protobuf `.proto`, OpenAPI YAML, JSON Schema, Avro) that both sides generate from? If not, the contract is "what each side happens to implement", which always drifts.
+- **Generation freshness:** When the schema changes, do CI checks ensure both sides are regenerated and committed? Or can one side merge a schema change without the other catching up?
+- **Type-system fidelity loss:** The schema may express things the target language can't (e.g., Protobuf `optional` semantics in TypeScript, Rust enums in Python). Where fidelity is lost, the consumer must explicitly handle the loss.
+- **Runtime validation on parse:** Even with codegen, the receiver should validate at the language boundary. Trusting the wire format crashes when an old client talks to a new server (or vice versa).
+- **Null / undefined / missing distinctions:** TypeScript distinguishes `null` from `undefined` from missing. Most other languages do not. JSON does not. Verify that the receiver's interpretation matches the sender's.
+
+**Round-trip test:**
+- **Within a polyglot monorepo:** integration test that boots both services and asserts a real round-trip across the wire. testcontainers + the project's service-runner is the standard pattern.
+- **Across repos / SDKs:** consumer-driven contract test (see [verification-methods.md](verification-methods.md)) is usually the right tool. The schema artifact is the contract.
+- **Native extension:** test that calls the native function with realistic inputs, asserts the high-level wrapper interprets the result correctly. Run on every supported runtime version.
+
+**Common bugs hiding here:**
+- TypeScript frontend serializes `Date` as ISO string; Python backend's Pydantic schema expects `datetime`; on some Python versions this works (auto-coerce), on others it 422s.
+- Protobuf `optional` field added on the producer; consumer regenerated months ago and treats absence as default; default is wrong for the new field.
+- Rust extension returns `Result<T, E>`; Python wrapper raises a generic exception; caller catches `Exception` and silently drops the specific failure mode.
+- Mobile app uses an old version of the API; backend silently changed an enum value; mobile app crashes on parse OR worse, treats unknown enum as the default and proceeds.
+
+---
+
+## 8. Event-sourced / CQRS seam
+
+**Definition:** Producer and consumer are separated in time as well as in space. The producer (command handler, event writer) emits events; the consumer (projection, read model, query handler, downstream subscriber) reads them — possibly hours, days, or releases later. Replay correctness, projection drift, and command/query divergence are all variants of this seam.
+
+**Patterns:**
+- Event-sourced systems (EventStore, Kafka with event-sourcing semantics, custom event log).
+- CQRS architectures with command-side writes and query-side reads.
+- Audit logs that downstream tools build dashboards on.
+- Long-lived projections that get rebuilt from history.
+- Outbox patterns where events are persisted in the same transaction as state changes.
+- Saga / process-manager systems where a multi-step workflow's state is reconstructed from events.
+
+**Contract to check:**
+- **Event versioning:** Does each event carry an explicit `version` / `schemaVersion` field? Without it, a projection rebuild against historical events silently misinterprets old events as the current shape.
+- **Backwards-compatible event evolution:** New event versions must be readable by old projection code (forward compat) or projection code must explicitly upcast old → new on read. Adding a required field to an event without a migration story breaks rebuild.
+- **Replay determinism:** Replaying the event log from the beginning must produce the same projection state as live processing. Side effects in projection handlers (HTTP calls, sending emails) violate this and silently corrupt rebuilds.
+- **Command/query divergence:** Command-side validation (write) and query-side filtering (read) often duplicate the same rules in different code. They must agree. If write rejects `status: cancelled` but read still surfaces cancelled rows, the system has lied to itself.
+- **Idempotency on consumer:** At-least-once delivery is the norm. Each event must be processable multiple times without producing duplicate side effects. Look for: idempotency keys, dedupe tables, idempotent state mutations.
+- **Out-of-order delivery:** Where ordering is not guaranteed (parallel partitions, retries), the consumer must tolerate or detect out-of-order events.
+
+**Round-trip test:**
+- **Replay correctness:** Snapshot a representative event sequence as a fixture; replay it through the projection; assert final state. Then re-run with a perturbation (skip an event, duplicate one, reorder two) and assert the projection handles each case correctly.
+- **Versioned-event compatibility:** For every event version, store a fixture event of that version; assert current projection code can process it.
+- **Command + query symmetry:** A property test that drives commands through the write side, then queries through the read side, asserts the resulting view matches the executed commands.
+- **Idempotency:** Apply the same event twice in a row; assert state is identical to applying it once.
+
+**Common bugs hiding here:**
+- Event V1 had field `userId`; V2 renamed to `actorId` with a migration; projection code still reads `userId` and silently sees `undefined` for V2 events.
+- Projection handler calls a third-party API (sends an email). Replay against history sends every email a second time.
+- Command side validates "amount > 0"; query side filters by "amount >= 0". A bug introduces a `0` somewhere; write rejects, read surfaces it from old data; product becomes inconsistent.
+- New event type added; old projection rebuilds skip it (no handler) — silently lossy until someone notices the metric is wrong.
+- Out-of-order delivery in a partitioned queue: `UserCreated` arrives after `UserDeleted`; consumer creates a deleted user that nothing else sees.
+
+---
+
 ## How to detect boundary type from a code change
 
 When triaging a diff, classify each change by which boundary type it touches:
@@ -189,5 +258,7 @@ When triaging a diff, classify each change by which boundary type it touches:
 | New endpoint, modified payload, new event | Network/IPC |
 | Modified global, cache, or singleton | Shared mutable state |
 | New migration, version bump on persisted shape | Schema versioning |
+| Modified shared schema artifact (`.proto`, OpenAPI, JSON Schema), modified codegen output | Cross-language seam |
+| New event type, modified event handler, modified projection, replay-relevant change | Event-sourced / CQRS seam |
 
 A single change frequently touches multiple boundaries. A migration that adds a column also adds a serialization field and likely a network payload field. Check all relevant boundaries, not just the most obvious one.

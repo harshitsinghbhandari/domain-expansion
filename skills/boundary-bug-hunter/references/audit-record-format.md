@@ -1,8 +1,20 @@
-# Audit Record Format — `.boundary-deferrals.json`
+# Audit Record Formats
+
+The skill maintains three repo-committed audit artifacts. All three live at the repo root and use the same `seamHash` algorithm so they can be cross-referenced.
+
+| File | Purpose | When written |
+|------|---------|--------------|
+| `.boundary-deferrals.json` | Explicit out-of-scope decisions | When the user defers a specific boundary with a written reason |
+| `.boundary-overrides.log` | Emergency wave-throughs | When `BOUNDARY_OVERRIDE`/`--override` is used |
+| `.boundary-verifications.json` | Verification cache | After every successful run; speeds up re-runs |
+
+This file specifies all three. Deferrals get the most coverage because they're the most human-judgment-heavy.
+
+---
+
+## Deferrals — `.boundary-deferrals.json`
 
 When the user explicitly marks a boundary out of scope, the skill records the decision so it remains auditable in the next review cycle. The record is committed to the repo. Deferrals not in version control are not deferrals.
-
-This file specifies the schema, the seam-hash algorithm (which determines when a deferral becomes stale), and the lifecycle the skill enforces.
 
 ---
 
@@ -181,3 +193,100 @@ The skill rejects this with: `Deferral reason too short or non-substantive. Prov
 - Verify the `createdBy` matches the PR author or that the PR description explains why someone else's deferral is being added.
 
 A growing `.boundary-deferrals.json` over time is a leading indicator of accumulating risk. Quarterly review: scan for deferrals whose `expiresAt` is approaching and whose underlying constraints may have changed.
+
+---
+
+## Overrides — `.boundary-overrides.log`
+
+When the user invokes the skill with `BOUNDARY_OVERRIDE="<reason>"` or `--override "<reason>"`, the skill waves through unverified boundaries, sets `boundary-status.json.status` to `pass`, and appends an entry to this log. The log is committed to the repo so override use is visible in PR diffs.
+
+### Format
+
+Append-only JSON Lines. One JSON object per line. Never edit prior lines.
+
+```jsonl
+{"id":"2026-04-27T15:32:01Z-abc1234","timestamp":"2026-04-27T15:32:01Z","commitSha":"abc1234","author":"harshit@example.com","reason":"Payments outage; Stripe is rejecting webhooks. Hotfixing the signature verification; round-trip test added in follow-up PR #248. Will revisit by 2026-05-04.","branch":"hotfix/stripe-sig","wavedThroughBoundaries":[{"seamHash":"sha256:9a4c2b...e1f3","producer":"src/payments/webhook.ts:verifySig:42-78","consumer":"src/payments/webhook.ts:handleEvent:80-120","boundaryType":"cross-module-call"}]}
+```
+
+### Field meanings
+
+| Field | Required | Notes |
+|-------|----------|-------|
+| `id` | yes | `<ISO-8601>-<short-sha>`. Globally unique. |
+| `timestamp` | yes | When the override was used. |
+| `commitSha` | yes | The HEAD SHA at the moment of override. |
+| `author` | yes | From git config. |
+| `reason` | yes | Mandatory. Rejected if under 30 characters or generic ("hotfix", "later", "skip"). Must explain the engineering constraint and the planned follow-up. |
+| `branch` | yes | The branch name. |
+| `wavedThroughBoundaries` | yes | Every boundary that was waved through, with its seam hash so the audit-overrides mode can cross-reference current state. |
+
+### Rate limit (`--max-overrides-per-month`)
+
+Soft enforcement. The skill counts entries from the last 30 days for the same `branch` (or for the repo if the branch is `main`/default). When the count exceeds the limit:
+
+- The override is rejected for this run.
+- `boundary-status.json.status` becomes `fail`.
+- A loud message: `OVERRIDE LIMIT EXCEEDED: <N> overrides used in last 30 days (limit <M>). Address the boundaries or raise the limit explicitly in .boundary-bug-hunter.json.`
+
+Default limit is 5/month for repos with no `.boundary-bug-hunter.json` config. Teams that find this restrictive should increase the limit explicitly — the goal is visibility, not paternalism.
+
+### Audit-overrides mode
+
+`boundary-bug-hunter audit-overrides` reads every entry since the last audit and produces `boundary-overrides-audit.md`:
+
+```markdown
+# Override Audit — <YYYY-MM-DD>
+
+Audited <N> entries from <last-audit-date> to now.
+
+## Followed up (boundary now verified or deferred)
+
+| Override id | Boundary | Verified by | Verified on |
+|-------------|----------|-------------|-------------|
+| ...         | ...      | round-trip test in `tests/integration/x.ts` | <PR / commit> |
+
+## Outstanding (still unverified, still no deferral)
+
+| Override id | Boundary | Used reason | Days outstanding |
+|-------------|----------|-------------|------------------|
+| ...         | ...      | ...         | <N>              |
+
+## Override usage trend
+
+<N>/month over the last <K> months. Trend: increasing | flat | decreasing.
+```
+
+The audit timestamp is recorded in `.boundary-bug-hunter.json` so the next audit picks up where this one left off. Outstanding entries that are >30 days old are flagged red — they represent debt that was never paid.
+
+---
+
+## Verification cache — `.boundary-verifications.json`
+
+Speeds up re-runs by caching boundary-verification status keyed on `(seamHash, testFileHash)`. Without this cache, every run re-derives coverage by reading every test file. With it, only changed seams or changed tests are re-checked.
+
+### Schema
+
+```json
+{
+  "schemaVersion": 1,
+  "verifications": [
+    {
+      "seamHash": "sha256:9a4c2b...e1f3",
+      "method": "round-trip" | "contract" | "replay" | "property",
+      "testFile": "tests/integration/charge_test.ts",
+      "testFileHash": "sha256:1f3e9d...4a2c",
+      "verifiedAt": "2026-04-27T15:32:01Z"
+    }
+  ]
+}
+```
+
+### Lifecycle
+
+- **Cache hit** when both `seamHash` and `testFileHash` match → boundary is verified, skip re-derivation.
+- **Cache miss** when either hash changed → re-derive coverage from scratch and update the cache entry.
+- **Stale entry** when the cached `testFile` no longer exists or the cached `seamHash` no longer corresponds to any boundary on the current diff → drop the entry on next write.
+
+The cache is committed (so CI doesn't re-derive cold every run). The skill never trusts the cache for the final report — it always validates that the cached test file still exists and that the cached method's invariant still holds. The cache is a hint, not an authority.
+
+A cold cache (no file present, or schemaVersion mismatch) is a normal first run — it is not an error.
