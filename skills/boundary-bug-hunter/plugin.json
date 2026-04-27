@@ -1,0 +1,5 @@
+{
+  "name": "boundary-bug-hunter",
+  "description": "Aggressive user-flow boundary analysis on a diff or branch. Auto-detects entry points, traces flows through changed code, finds every seam, and refuses to mark the work complete until each unverified boundary has a real round-trip test or an explicit out-of-scope record.",
+  "entry": "SKILL.md"
+}
