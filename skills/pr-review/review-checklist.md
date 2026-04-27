@@ -241,54 +241,74 @@ When a PR touches code in the scope of any item below, **stop and investigate** 
 - [ ] **Ownership clarity** - Ownership and borrowing are clear and idiomatic
 - [ ] **No unsafe without justification** - Unsafe blocks have clear justification and are minimal
 
-## Data Flow Integrity
+## Data Flow Integrity (delegated)
 
-This section catches bugs invisible to static code analysis — where code looks correct in isolation but data is lost or corrupted as it flows through the system. These are the bugs that pass CI and break in production.
+Round-trip correctness, dual-path consistency, writer-reader alignment, external state alignment, crash safety, and stored-state invalidation are the domain of the **boundary-bug-hunter** skill. Run that skill on the diff in aggressive mode and incorporate its findings into the review.
 
-### Round-Trip Correctness
+Do not duplicate boundary-bug-hunter's analysis here. Its output is more rigorous, produces a refusable gate (`boundary-status.json`), and persists explicit out-of-scope decisions to `.boundary-deferrals.json` for cross-cycle audit.
 
-For every data value that is persisted (written to disk, database, config, API response):
+If for some reason boundary-bug-hunter cannot be run, note this in the review under "Coverage gaps in this review" and apply the items below as a fallback heuristic only — knowing they are weaker than a real seam-test gate.
 
-- [ ] **Type vs runtime validator alignment** — If the project uses both compile-time types (TypeScript `type`/`interface`, Python type hints) AND a runtime validator (Zod, Joi, Pydantic, JSON Schema), diff the two. Every value in the compile-time type MUST exist in the runtime validator schema. Missing values are silently stripped on parse. Search for `z.object`, `z.enum`, `z.union`, `BaseModel`, `Schema` and compare against the corresponding TypeScript types or Python type hints.
+## Observability & Debuggability
 
-- [ ] **Write → parse → re-write round-trip** — Trace a value through: code writes it → serializer stores it → parser reads it back → code uses it. Does the value survive? Check: are there fields that are written but not in the parse schema? Are there parse schemas that add defaults the writer doesn't set?
+A change that ships with worse observability than what it replaced is a regression even if every test passes — debugging in production becomes more expensive forever after.
 
-- [ ] **Sanitization strips data needed later** — If a sanitizer/normalizer processes raw input before storage, verify it doesn't strip fields that downstream code relies on. "Preserved until X" comments are a red flag — verify the preservation actually works end-to-end.
+- [ ] **Logging at decision points** — Branches taken, retries attempted, fallbacks triggered, external-call outcomes (success / failure / timeout). A code path that silently makes a choice will be invisible in incident review.
+- [ ] **Correlation propagation** — Every new log line, span, or metric within a request includes the project's correlation key (request ID, trace ID, user ID, tenant ID — whatever the codebase uses). A log line without correlation can't be joined to anything.
+- [ ] **Log level appropriateness** — Errors logged at `error`/`warn`. Routine flow at `info`/`debug`. Don't log normal operation at `error` (alert fatigue) or genuine failures at `debug` (silently lost).
+- [ ] **Structured logging used** — If the project uses structured logging (JSON / key-value), new log statements use the same shape. Free-form printf-style strings inside a structured-logging codebase create gaps.
+- [ ] **No PII / secrets in logs** — User input, tokens, full headers, request bodies — none should land in logs without redaction. Verify by reading the new log lines as if you were a security auditor.
+- [ ] **Metrics for new code paths** — New endpoints / queue handlers / cron jobs emit at least: invocation count, duration, error count. Without these, on-call cannot tell whether the new code is healthy.
+- [ ] **No removed observability** — If the diff deletes log statements, metrics, or trace spans, the removal is justified (e.g., it was wrong). "Cleanup" of log lines that someone may rely on for debugging is a regression.
+- [ ] **Distributed-trace continuity** — If the change adds a new internal hop (service-to-service, queue producer/consumer), trace context is propagated. Otherwise traces split into orphans at the new boundary.
 
-### Dual-Path Consistency
+## Rollout & Migration Safety
 
-- [ ] **Duplicate logic audit** — Search for cases where the same conceptual operation exists in multiple files (e.g., status derivation, path resolution, validation). For each pair, verify they produce identical behavior for identical inputs. If they differ, determine which is canonical and flag the other.
+Risky changes need a way to be reversed without a re-deploy. Reviewers must verify the safety machinery exists before approving.
 
-- [ ] **Launch vs restore, create vs update symmetry** — If a resource has a "create/launch" path and an "update/restore" path, compare their configurations. Restore paths often forget flags, permissions, or setup that the create path includes. Classic pattern: create does X, Y, Z but restore only does X, Y.
+- [ ] **Feature-flagged when appropriate** — Significant behavior changes (new endpoints, altered request handling, new scheduled jobs) are gated behind a feature flag with a default-off state, so the change can be turned off without redeploy.
+- [ ] **Kill switch exists for risky paths** — For changes that could cause cost spikes (new external API calls), data corruption (new write paths), or user-visible breakage, there is a configuration knob to disable the path immediately.
+- [ ] **Migrations are reversible OR explicitly one-way** — Schema/data migrations have a `down()` that works on data created after `up()` ran, OR are explicitly documented as one-way with the rollback strategy stated.
+- [ ] **No coupled deploys without explicit ordering** — If the change requires two services or a service+frontend to be deployed in a specific order, the order is documented in the PR description and in any deploy runbook. Silent ordering requirements cause outages.
+- [ ] **Backwards-compatible during rollout** — During the deploy window, old code (which is still running) and new code (just deployed) coexist. Verify nothing in the diff breaks that overlap window — old readers can handle new writes, new readers can handle old writes.
+- [ ] **Rollout plan in PR description** — For non-trivial changes: gradual rollout? Canary? Specific tenants first? Or "deploy and watch"? If unstated, ask.
+- [ ] **Telemetry for rollout decisions** — How will the team know the rollout is succeeding? Specific metrics or dashboards exist before the rollout starts.
 
-- [ ] **Migration forward vs rollback symmetry** — If migration adds/transforms data, verify rollback correctly reverses it. Check: does rollback account for data created AFTER migration (new sessions, new archives)? Does it count everything that would be destroyed?
+## Error UX & Operator Affordance
 
-### Counter/Flag Writer-Reader Alignment
+Errors are part of the product. They reach users, customer support, on-call engineers, and external API consumers. Bad error UX is a quiet but constant tax.
 
-- [ ] **Writer-reader mismatch** — For every `if (counter > 0)` or `if (flag)`, trace: who increments/sets this? Are there OTHER code paths that should also set it but don't? Writer-reader mismatches are invisible when you look at either side in isolation.
+- [ ] **Error messages are actionable** — A new error path tells the receiver what went wrong AND what to do about it. "Invalid input" is not actionable. "Field `email` must be a valid email — got `<redacted>`" is.
+- [ ] **No internal-detail leakage** — Error messages reaching external users don't include stack traces, file paths, internal hostnames, query fragments, or any infrastructure shape. Internal logs may include those; user-facing messages must not.
+- [ ] **Failure modes distinct** — A 500 because the database is down should not look identical to a 500 because the request was malformed. Different failure modes need different signals so the receiver can respond differently (retry vs fix).
+- [ ] **Timeouts and retries communicated** — When the system is retrying or has timed out, the receiver knows. A request that hangs with no signal is worse than a fast failure.
+- [ ] **Customer-support-readable** — A support engineer looking at the error message and the correlation ID can identify the customer, the request, the failure point. If they need a full debugging session, the error UX is too thin.
+- [ ] **Localization-friendly** — If the project supports multiple languages, error messages are sourced from the localization layer, not hardcoded strings. New hardcoded English strings in a localized codebase are a regression.
 
-### External State Alignment
+## Configuration & Environment
 
-When code manages state that an external tool or system also tracks:
+New config is a permanent operational tax. Reviewers verify it is justified, defaulted, documented, and discoverable.
 
-- [ ] **Moved resources need repair** — If code moves or renames a resource that an external tool tracks internally (managed directories, named sessions, containers, registered services), verify the tool's internal references are updated — not just the filesystem or local state.
+- [ ] **New env vars / config keys documented** — Every new config knob is documented in the project's config reference (CLAUDE.md, README, `.env.example`, helm values, whatever the project uses). Undocumented config keys silently differ between environments.
+- [ ] **Sensible defaults** — New config has a default that is safe and reasonable. Required-with-no-default config breaks startup in any environment that hasn't been updated.
+- [ ] **Secrets via secrets manager** — New secrets do not live in plaintext config files, env-var examples, or commit history. They are loaded from the project's secrets manager (Vault, AWS Secrets Manager, k8s secrets, 1Password, etc.).
+- [ ] **Config change is observable** — When config changes at runtime (hot-reload, dynamic config systems), the change is logged so an operator can correlate behavior shifts to config edits.
+- [ ] **No environment-specific code paths via raw env checks** — `if (process.env.NODE_ENV === 'production')` scattered through business logic is a smell. Environment-specific behavior should live behind a single config interface.
+- [ ] **Test/CI environments updated** — If the change adds a required config key, CI configs, dev `.env.example`, and staging configs are updated in the same PR. Otherwise CI breaks for the next person.
 
-- [ ] **Renamed identifiers need propagation** — If an identifier used as a key across systems changes (session names, resource IDs, registered paths), trace every place that identifier appears: metadata files, config references, monitoring, other services. All must be updated.
+## Sensitive Data & Compliance
 
-- [ ] **Post-move validation** — After moving or renaming an externally-tracked resource, verify the external tool still works with it. Don't assume the operation succeeded from the local perspective alone.
+(Extends the Security section above.)
 
-### Crash Safety
+- [ ] **PII inventory honest** — If the change introduces a new field that holds PII (name, email, phone, address, IP, biometric, location, behavior data), the project's PII inventory / data-classification doc is updated. Hidden PII fields are a compliance risk.
+- [ ] **Retention applies** — New data subject to retention policy is captured by the project's retention/deletion mechanism (TTL, soft-delete, periodic purge job). New eternal data is rare and should be justified.
+- [ ] **Right-to-deletion supported** — In jurisdictions with deletion rights, new data has a path to be deleted on user request. Foreign-key constraints that prevent deletion are findings.
+- [ ] **Audit log for security-relevant operations** — New code that grants/revokes permissions, accesses sensitive data, modifies access policies, or performs payments emits an audit-log event. Compliance and forensics depend on this.
+- [ ] **Cross-region data movement disclosed** — If the change causes data to flow across regions or to a new third-party processor, the data-protection impact assessment / DPA list is updated.
 
-- [ ] **Partial operation recovery** — If a function performs N sequential filesystem/network operations, verify what happens if it crashes after step K. Steps 1..K are done, K+1..N are not. Is the state recoverable? Can the operation be safely re-run? Look for: marker files, idempotent operations, or cleanup of partial state.
+## External Dependencies & Rate Limits
 
-- [ ] **Idempotency of re-run** — If an operation is interrupted and re-run, does it produce the correct result? Check: do early steps have "skip if already done" guards? Do write operations overwrite (safe) or append (unsafe on re-run)?
-
-- [ ] **Temp file cleanup on failure** — If a write-then-rename pattern is used (atomic write), verify the temp file is cleaned up if the rename fails. Otherwise temp files accumulate indefinitely.
-
-### Stored State Invalidation
-
-- [ ] **Stored state vs current truth** — For any stored/cached state, ask: what happens if the underlying truth changes after the state was stored? Does the stored state become stale? Is there a mechanism to re-derive or invalidate it? Look for: cached statuses read after the entity changes state, permissions cached after role changes, derived values that aren't recomputed when inputs change.
-
-- [ ] **Post-action state consistency** — After a destructive or transformative action (delete, archive, migrate, restore, upgrade), verify stored metadata matches the new reality. Are there fields from the pre-action state that would cause incorrect behavior if read post-action?
-
-- [ ] **Soft-delete vs hard-delete confusion** — When code counts, scans, or iterates over resources, does it correctly handle resources that are logically removed but physically present (archived, soft-deleted, disabled)? These are invisible to naive scans but still exist and may contain data the user expects to keep.
+- [ ] **New external calls counted** — A new HTTP/gRPC/queue call to an external service adds to that service's quota. The PR description acknowledges the volume and confirms the quota is not at risk.
+- [ ] **Backoff and retry budget** — New external calls implement exponential backoff with jitter and a retry budget. Unbounded retries on failure cause cascading outages.
+- [ ] **Circuit breaker where appropriate** — For external dependencies on the request critical path, a circuit breaker (or the equivalent timeout/fallback pattern) prevents the dependency's outage from becoming yours.
+- [ ] **Vendor failure mode handled** — When the external service returns a malformed response, an unexpected status, or times out, the code degrades gracefully. "It will never return that" is not handling.

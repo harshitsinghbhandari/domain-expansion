@@ -55,6 +55,10 @@
     {
       "name": "edge-case-hunter",
       "path": "skills/edge-case-hunter"
+    },
+    {
+      "name": "boundary-bug-hunter",
+      "path": "skills/boundary-bug-hunter"
     }
   ]
 }

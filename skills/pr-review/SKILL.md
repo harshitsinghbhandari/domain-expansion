@@ -139,7 +139,7 @@ The review checklist is large. You cannot hold the full context of every system 
 
 ## Review Workflow
 
-The workflow is structured as **investigate first, then verify**. Steps 1-5 are active investigation — you trace flows, follow data, and experience the change. Steps 6-10 are verification — you check against checklists, BC guidelines, and existing discussion.
+The workflow is structured as **investigate first, then verify, then synthesize**. Steps 1-4 are investigation — context-building, flow tracing, delegated boundary verification, and consumer-UX inspection. Steps 5-9 are verification — checklist sweep, merge-conflict residue, PR discussion, BC, edge cases. Step 10 synthesizes findings into the review.
 
 ### Step 1: Understand Context
 
@@ -171,46 +171,42 @@ For each significantly changed function, method, or class, **follow the executio
 
 Spawn sub-agents in parallel to trace each significant change.
 
-### Step 3: Trace Data Flows
+### Step 3: Boundary Bug Hunt (delegated)
 
-For every data shape that crosses a boundary — function to function, module to module, service to service, code to disk/database/API — follow it from creation to final consumption.
+Data flow integrity at seams — schema drift, dual-path divergence, sanitizer strips, writer-reader mismatches, crash-mid-sequence, schema versioning, shared mutable state — is the domain of the [boundary-bug-hunter](../boundary-bug-hunter/SKILL.md) skill. Do not attempt this analysis inline; boundary-bug-hunter does it more rigorously and produces a refusable gate.
 
-**For each data shape, trace the full journey:**
+**Required action:** Invoke `boundary-bug-hunter` in aggressive mode on this diff. Read the resulting `boundary-report.md` and `boundary-status.json`. Skip only if the diff is confined to a single file with no callers and no externally visible output (rare; verify before skipping).
 
-1. **Where is it created?** What validates it at the source?
-2. **Where is it stored or transmitted?** What format? What can be lost in translation?
-3. **Where is it read back?** What validates it on the way in? Does the reader's schema match the writer's?
-4. **Where is it transformed?** Are there intermediate formats, sanitizers, or normalizers that could strip or alter fields?
-5. **Where is it consumed?** Does the final consumer interpret every field correctly?
+**Incorporate into review:**
 
-**Specific patterns to investigate:**
+- If `boundary-status.json.status == "fail"`, the recommendation cannot be `Approve`. The unverified boundaries become must-fix items in the final review.
+- Quote each unverified boundary in the "Boundary Verification" section of the output (producer, consumer, contract, why it's unverified).
+- For each deferral applied this run, note the recorded reason and confirm it still holds. Stale deferrals or invalidated deferrals (where the seam changed) are review findings.
 
-- **Type vs runtime validator mismatch** — If the project uses compile-time types AND a runtime validator (Zod, Joi, Pydantic, JSON Schema, etc.), diff the two. Fields in the type but missing from the validator are silently stripped on parse.
+**What this step does NOT cover (handled elsewhere):**
 
-- **Dual-path divergence** — If the same data has two code paths (two readers, two writers, a reader and a writer), verify they agree on schema, field priority, and transformation rules. Example: path A does `storedValue ?? derivedValue` but path B does `derivedValue ?? storedValue` — one is wrong.
-
-- **Sanitizer strips data needed later** — If a sanitizer/normalizer processes input before storage, verify it doesn't strip fields that downstream code relies on. Trace whether preservation actually works end-to-end through write → parse → re-write.
-
-- **Writer-reader mismatch** — For every conditional like `if (counter > 0)` or `if (flag)`, trace who sets the value. Are there code paths that should set it but don't?
-
-- **Crash mid-sequence** — If a function performs N sequential operations (file writes, API calls, DB updates), what happens if it crashes after step K? Is state recoverable? Can the operation be safely re-run?
-
-Spawn sub-agents for each data shape to trace in parallel.
+- Edge cases inside a single function (Step 9 — edge-case-hunter).
+- BC implications of API changes (Step 8 — bc-guidelines.md).
+- Code quality, security, perf (Step 5 — review-checklist.md).
+- Output UX / human-readability of API responses, log lines, error messages (Step 4 below).
 
 ### Step 4: Trace User and Consumer Experience
 
-Step back from the implementation. For every changed output surface — API response, CLI output, UI state, event payload, webhook body, error message, log line — read it as the **receiver** would.
+Boundary-bug-hunter (Step 3) verifies that the contract is met. This step asks a different question: **is the contract the right thing to be exposing?** For every changed output surface — API response field, CLI output, UI state, event payload, webhook body, error message, log line — read it as the **human receiver** would.
 
 **For each output surface:**
 
-1. **Who receives this?** List every downstream consumer — other services, UIs, external tools, human operators reading logs.
-2. **What do they see?** Not what the code intends — what the receiver actually gets. A field named `title` will be displayed as a title. Is that actually what this value is?
-3. **Can they tell similar things apart?** If the same concept has multiple representations (e.g., a summary used as a fallback for a title), can the consumer distinguish which one it received?
-4. **What do they see in transitional states?** Before the value is fully populated — null, empty string, fallback value — is that better or worse than wrong data?
-5. **Can they migrate?** If the output shape changes, is there a version signal or deprecation path? Or will consumers silently break?
-6. **Would they be surprised?** If you received this output with zero knowledge of the implementation, would any field confuse you? Would you misinterpret anything? Would you be unable to do something you need to do?
+1. **Who is the human receiver?** Customer support reading logs to diagnose? Operator reading a CLI? Engineer debugging at 3am? An external API consumer building against your docs?
+2. **Does the field name match the value?** A field named `title` will be displayed as a title. Is the value actually a title — or is it a fallback summary, a default, an internal key? Misleading names corrupt every downstream display.
+3. **Can the receiver tell similar things apart?** If the same concept has multiple representations (e.g., a "summary" used as a fallback for a "title", a default value vs an explicitly-set value), can the consumer distinguish which one they received? An indistinguishable fallback is a silent lie.
+4. **Are transitional states honest?** Before the value is fully populated — null, empty string, fallback, "Loading..." — is the visible state honest about its incompleteness, or does it look like a real value?
+5. **Are error messages actionable?** A new error path: does the message tell the receiver what went wrong AND what to do? "Internal error" tells nobody anything. "Stripe webhook rejected: missing `idempotency-key` header — see API docs / retry with new key" is actionable.
+6. **Do log lines preserve correlation?** New log statements: do they include the request ID, trace ID, user ID, or whatever the project's correlation key is? A log line with no correlation is debugging-hostile.
+7. **Would the receiver be surprised?** Given zero knowledge of the implementation, would any field confuse them? Would they misinterpret anything? Would they be unable to do something they need to do?
 
-Any "yes" to question 6 is a finding.
+Any "yes" to question 7, or any "no" to questions 2 / 3 / 5 / 6, is a finding.
+
+This step is about **judgment**, not contracts. Contract verification is Step 3's job.
 
 ### Step 5: Deep Review Against Checklist
 
@@ -286,17 +282,29 @@ Reference the specific patterns or utilities the PR should be using.]
 ### Backward Compatibility
 [BC concerns if any]
 
-### Data Integrity
-[Round-trip issues, schema mismatches, dual-path inconsistencies,
-writer-reader mismatches, crash safety gaps. Only present when
-the PR touches persistence, serialization, or data that crosses
-module/service boundaries.]
+### Boundary Verification
+[Summary of the boundary-bug-hunter run. Always present when boundary-bug-hunter
+was invoked in Step 3.
+
+Required content:
+- Status (PASS / FAIL) and unverified-boundary count from boundary-status.json.
+- For FAIL: each unverified boundary listed as producer:line → consumer:line,
+  with the contract and why it's unverified. These are must-fix.
+- Deferrals applied this run: each one named with its recorded reason and a
+  one-line confirmation that the reason still holds. Reasons that no longer
+  hold are review findings.
+- Stale or invalidated deferrals: surface as cleanup items.
+
+A FAIL status here makes the overall recommendation Request Changes regardless
+of what other sections say.]
 
 ### Consumer Impact
-[Issues found by tracing the user/consumer experience — misleading
-field names, missing version signals, undistinguishable representations,
-broken transitional states. Only present when the PR changes output
-surfaces (APIs, events, CLI output, UI state).]
+[Output-UX findings from Step 4 that are NOT contract verification (which lives
+in Boundary Verification). Examples: misleading field names, error messages
+that don't tell the operator what to do, log lines missing correlation IDs,
+indistinguishable fallback representations, dishonest transitional states.
+Only present when the PR changes output surfaces (APIs, events, CLI output,
+UI state, logs).]
 
 ### Edge Cases
 [High-risk edge cases found by targeted analysis of critical changed files.
@@ -334,3 +342,11 @@ When reviewing, consult these project files for context — read them rather tha
 - `CONTRIBUTING.md` - PR requirements and review process
 - Project-specific test utilities and patterns
 - Configuration files that define project conventions
+
+## Sibling skills invoked
+
+This skill delegates parts of the review to specialized skills:
+- `boundary-bug-hunter` (Step 3) — seam analysis, round-trip verification, deferral audit. A `fail` status from its run is blocking.
+- `edge-case-hunter` (Step 9) — input-side edge cases inside high-risk functions.
+
+Do not duplicate their findings inline; reference and incorporate them. If either skill is unavailable in the running environment, note that explicitly in the review under "Coverage gaps in this review".
