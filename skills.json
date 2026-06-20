@@ -63,6 +63,10 @@
     {
       "name": "spec-and-ship",
       "path": "skills/spec-and-ship"
+    },
+    {
+      "name": "frontend-architecture",
+      "path": "skills/frontend-architecture"
     }
   ]
 }

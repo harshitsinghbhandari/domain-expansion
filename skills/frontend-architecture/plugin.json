@@ -1,0 +1,5 @@
+{
+  "name": "frontend-architecture",
+  "description": "Opinionated blessed-default guidance for architecting a React web frontend: generated backend types, TanStack Query/Router, state machines, Suspense + ErrorBoundary, real-time transport, design systems, and deploy targets. Fires on greenfield setup and mid-project structural decisions.",
+  "entry": "SKILL.md"
+}
