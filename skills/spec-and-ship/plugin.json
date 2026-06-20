@@ -1,0 +1,5 @@
+{
+  "name": "spec-and-ship",
+  "description": "Interview-driven specification and execution workflow for non-trivial features, systems, refactors, integrations, or migrations built out through Agent Orchestrator (AO) workers. Interrogates intent and requirements before any code, then ships the spec into parallel execution.",
+  "entry": "SKILL.md"
+}

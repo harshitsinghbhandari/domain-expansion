@@ -59,6 +59,10 @@
     {
       "name": "boundary-bug-hunter",
       "path": "skills/boundary-bug-hunter"
+    },
+    {
+      "name": "spec-and-ship",
+      "path": "skills/spec-and-ship"
     }
   ]
 }
