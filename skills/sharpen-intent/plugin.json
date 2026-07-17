@@ -1,0 +1,5 @@
+{
+  "name": "sharpen-intent",
+  "description": "Aggressive, standalone interrogation that grills a half-formed idea, decision, or plan until the user's intent is stated cleanly enough that a stranger could act on it with zero ambiguity. Sharpens intent rather than breaking the idea; ends with a written sharpened-intent artifact. Manual-only.",
+  "entry": "SKILL.md"
+}

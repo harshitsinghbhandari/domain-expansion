@@ -67,6 +67,10 @@
     {
       "name": "frontend-architecture",
       "path": "skills/frontend-architecture"
+    },
+    {
+      "name": "sharpen-intent",
+      "path": "skills/sharpen-intent"
     }
   ]
 }
