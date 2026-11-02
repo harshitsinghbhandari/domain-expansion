@@ -17,7 +17,7 @@ This repository contains a collection of **skills** compatible with the `npx ski
 - **resume-upgrade** – Propose strategic resume upgrades like projects, skills, and proof-building moves for a target job, and only after a matching `resume-critic` review.
 - **pr-review** – Comprehensive PR review focusing on code quality, test coverage, security, backward compatibility, and what CI cannot check.
 - **pr-learning** – Extract actionable learnings from merged PRs by comparing initial submission vs final merged state.
-- **ao-user-time-analyse**: Analyse retained AO messages to find repeated asks, correction loops, and human attention blockers.
+- **ao-user-time-analyse**: Collect private AO messages and analyse recurring asks, correction loops, and human attention blockers.
 - **edge-case-hunter** – Exhaustive edge-case review that hunts boundary conditions, missing guards, and unhandled failure modes with risk-scored results.
 - **boundary-bug-hunter** – Aggressive user-flow / boundary-bug analysis on a diff or branch. Auto-detects entry points, traces flows through changed code, finds every seam (cross-module calls, serialization, file I/O, shared state, schema versioning, network/IPC), and refuses to mark the work complete until each unverified boundary has a real round-trip test or an explicit out-of-scope record.
 - **spec-and-ship** – Interview-driven specification and execution workflow for non-trivial features, systems, refactors, integrations, or migrations built out through Agent Orchestrator (AO) workers. Interrogates intent and requirements before any code, then ships the spec into parallel execution.
