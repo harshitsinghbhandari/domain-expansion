@@ -71,6 +71,10 @@
     {
       "name": "sharpen-intent",
       "path": "skills/sharpen-intent"
+    },
+    {
+      "name": "ao-user-time-analyse",
+      "path": "skills/ao-user-time-analyse"
     }
   ]
 }
